@@ -2,7 +2,7 @@ name: Өдөр тутмын таамаг
 
 on:
   schedule:
-    - cron: "23 8 * * *"   # 16:23 Улаанбаатарын цагаар
+    - cron: "3 18 * * *"   # 02:03 Улаанбаатарын цагаар — маргаашийн таамаг
   workflow_dispatch:
 
 permissions:
@@ -31,6 +31,8 @@ jobs:
         id: forecast
         continue-on-error: true
         run: python src/forecast.py
+      - name: Өнөөдрийн график
+        run: python src/today.py
       - name: Хадгалах
         if: ${{ !cancelled() }}
         run: |
