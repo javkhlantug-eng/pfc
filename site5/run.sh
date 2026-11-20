@@ -15,7 +15,22 @@ cd "$APP/src" || exit 1
 
 python3 collect_load.py --days-back 1
 
-if [ "$H" = "02" ] || [ "${1:-}" = "--force-forecast" ] || [ ! -f "$WEB/data/forecast.json" ]; then
+if [ "$H" = "02" ] || [ "${1:-}" = "--update" ]; then
+  # Кодыг GitHub-аас шинэчлэх (өгөгдөлд хүрэхгүй). Татаж чадахгүй бол хуучнаараа үргэлжилнэ.
+  TMP=$(mktemp -d)
+  if curl -sfL https://github.com/javkhlantug-eng/pfc/archive/refs/heads/main.tar.gz | tar xz -C "$TMP"; then
+    S="$TMP/pfc-main"
+    rm -rf "$APP/src.new" && cp -r "$S/src" "$APP/src.new" && rm -rf "$APP/src" && mv "$APP/src.new" "$APP/src"
+    cp "$S"/site5/*.sh "$APP/site5/"
+    cp "$S/data/holidays.csv" "$APP/data/holidays.csv"
+    sed "s#^const DATA_BASE = .*#const DATA_BASE = '';#" "$S/docs/index.html" > "$WEB/index.html"
+    echo "код шинэчлэгдлээ"
+  fi
+  rm -rf "$TMP"
+  cd "$APP/src" || exit 1
+fi
+
+if [ "$H" = "02" ] || [ "${1:-}" = "--force-forecast" ] || [ "${1:-}" = "--update" ] || [ ! -f "$WEB/data/forecast.json" ]; then
   python3 collect_weather.py && python3 forecast.py
 fi
 

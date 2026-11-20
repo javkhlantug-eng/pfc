@@ -6,6 +6,8 @@
 import argparse
 import datetime as dt
 import json
+import os
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -38,7 +40,71 @@ def _dates(df):
     return df["date"] if "date" in df.columns else pd.Series(df.index, index=df.index)
 
 
-def fit_with_intervals(train, test, feats, target, **kw):
+# --- Ачааллын өсөлт ба түүхэнд байгаагүй хүйтнийг тусгах ---------------------
+# Модон (gradient boosting) загвар түүхэнд үзсэн хамгийн өндөр утгаас давж таамаглаж
+# чаддаггүй, харин Монголын ачаалал ижил температурт жилд ~7% өсөж байна.
+# Тиймээс өдрийн ОРГИЛЫГ «delta» горимоор таамаглана:
+#   оргил ≈ ойрын түвшин (2 ба 7 хоногийн өмнөх оргилын дундаж)
+#           + β × (маргаашийн оройн халаалтын градус − түвшний өдрүүдийн халаалтын градус)
+#           + модон загварын засвар (гараг, баяр, салхи г.м.)
+# Түвшин нь өсөлтийг, шугаман β нэмэлт хүйтнийг экстраполяц хийнэ.
+# Шалгалт (2026-09-22…11-19): оргилын алдаа ±35 → ±18.7 МВт; −38 °C-ийн туршилтад
+# 1,786 МВт (хуучин загвар түүхэн дээд 1,774-өөс давж чадахгүй байсан).
+# Цагийн муруйд (оргил ЦАГ) энгийн горим хамгийн нарийвчлалтай.
+HOURLY_MODE = os.environ.get("PFC_HOURLY_MODE", "plain")
+DAILY_MODE = os.environ.get("PFC_DAILY_MODE", "delta")
+
+
+def _level(df, target):
+    cols = ["prev_day_peak", "peak_lag7"] if target == "peak" else ["lag48", "lag168"]
+    return df[cols].mean(axis=1).values.astype(float)
+
+
+def _hdh(x, base=18.0):
+    return np.clip(base - np.asarray(x, dtype=float), 0, None)
+
+
+def _delta_x(df):
+    """Маргаашийн халаалтын градус − түвшний өдрүүдийн (2 ба 7 хоногийн өмнөх) халаалтын градус."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)   # хоёулаа хоосон мөрөнд
+        ref = np.nanmean(np.column_stack([_hdh(df["prev_day_temp_mean"]), _hdh(df["temp_lag7_mean"])]), axis=1)
+    return _hdh(df["temp_evening"]) - ref
+
+
+def _delta_base(df, y):
+    """оргил ≈ түвшин + β·Δ(халаалтын градус). β-г шугаман регрессээр олно (МВт/°C).
+    Шугаман тул түүхэнд байгаагүй хүйтэн болон өсөлтөд экстраполяц хийнэ."""
+    lev, dx = _level(df, "peak"), _delta_x(df)
+    ok = np.isfinite(lev) & np.isfinite(dx) & np.isfinite(y)
+    beta = float(np.dot(dx[ok], y[ok] - lev[ok]) / max(np.dot(dx[ok], dx[ok]), 1e-9))
+
+    def base(x):
+        lv, d = _level(x, "peak"), _delta_x(x)
+        return lv + beta * np.nan_to_num(d)
+    return base, beta
+
+
+def fit_model(df, feats, target, mode, kw):
+    """Сургасан загварын predict(df) функцийг буцаана."""
+    y = df[target].values.astype(float)
+    gb = make_model(**kw)
+    if mode == "delta":
+        base_fn, beta = _delta_base(df, y)
+        r = y - base_fn(df)
+        ok = np.isfinite(r)
+        gb.fit(df.loc[ok, feats], r[ok])
+        return lambda x: base_fn(x) + gb.predict(x[feats])
+    if mode == "ratio":
+        lev = _level(df, target)
+        ok = np.isfinite(lev)
+        gb.fit(df.loc[ok, feats], y[ok] / lev[ok])
+        return lambda x: gb.predict(x[feats]) * _level(x, target)
+    gb.fit(df[feats], y)
+    return lambda x: gb.predict(x[feats])
+
+
+def fit_with_intervals(train, test, feats, target, mode="plain", **kw):
     """P50 загвар + P10/P90 хүрээ. Хүрээг сүүлийн HOLDOUT_DAYS өдрийн загварт
     үзээгүй алдааны квантилаас (харьцангуй %) тооцно — квантил GBM-ээс бодитой."""
     train = train.dropna(subset=[target])
@@ -47,23 +113,22 @@ def fit_with_intervals(train, test, feats, target, **kw):
     a, b = train[d <= cut], train[d > cut]
     rel = None
     if len(a) > 100 and len(b) > 10:
-        m0 = make_model(**kw).fit(a[feats], a[target])
-        rel = (b[target] - m0.predict(b[feats])) / b[target]
-    m = make_model(**kw).fit(train[feats], train[target])
-    p50 = m.predict(test[feats])
-    # Сүүлийн үеийн системтэй хазайлтыг (жишээ нь ачааллын жилийн өсөлт) медиан алдаагаар засна
+        f0 = fit_model(a, feats, target, mode, kw)
+        rel = (b[target] - f0(b)) / b[target]
+    p50 = fit_model(train, feats, target, mode, kw)(test)
+    # Сүүлийн үеийн системтэй хазайлтыг медиан алдаагаар засна
     lo, mid, hi = (rel.quantile([0.1, 0.5, 0.9]).values if rel is not None else (-0.03, 0.0, 0.03))
     return pd.DataFrame({"p10": p50 * (1 + lo), "p50": p50 * (1 + mid), "p90": p50 * (1 + hi)},
                         index=test.index)
 
 
 def fit_predict(train, test):
-    return fit_with_intervals(train, test, FEATURES, "total_mw")
+    return fit_with_intervals(train, test, FEATURES, "total_mw", mode=HOURLY_MODE)
 
 
 DAILY_FEATURES = ["dow", "doy_sin", "doy_cos", "is_weekend", "is_holiday", "near_holiday",
                   "temp_min_day", "temp_mean_day", "temp_evening", "temp_mean72_eve",
-                  "wind_mean", "prev_day_peak", "prev_day_mean", "prev_day_temp_mean", "peak_lag7"]
+                  "wind_mean", "prev_day_peak", "prev_day_mean", "prev_day_temp_mean", "peak_lag7", "temp_lag7_mean"]
 
 
 def daily_frame(frame):
@@ -84,11 +149,12 @@ def daily_frame(frame):
         d[c] = first[c]
     d.loc[d["n"] < 24, "peak"] = np.nan
     d["peak_lag7"] = d["peak"].reindex(d.index - pd.Timedelta(days=7)).values
+    d["temp_lag7_mean"] = d["temp_mean_day"].reindex(d.index - pd.Timedelta(days=7)).values
     return d
 
 
 def fit_predict_daily(train_d, test_d):
-    return fit_with_intervals(train_d, test_d, DAILY_FEATURES, "peak", leaves=15, min_leaf=10)
+    return fit_with_intervals(train_d, test_d, DAILY_FEATURES, "peak", mode=DAILY_MODE, leaves=15, min_leaf=10)
 
 
 def peak_of(df, col):
