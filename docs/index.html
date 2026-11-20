@@ -115,7 +115,9 @@
 <script>
 const css = n => getComputedStyle(document.querySelector('.viz-root')).getPropertyValue(n).trim();
 const fmt = (v, d = 0) => v == null ? '—' : Number(v).toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: d });
-const get = p => fetch(p + '?v=' + Date.now()).then(r => r.ok ? r.json() : null).catch(() => null);
+// GitHub Pages дээр бол өөрийн data/, бусад хаяг (жишээ нь bayasaltugs.com/pfc) дээр бол GitHub Pages-ээс татна
+const DATA_BASE = /github\.io$|^localhost$|^127\.0\.0\.1$/.test(location.hostname) ? '' : 'https://javkhlantug-eng.github.io/pfc/';
+const get = p => fetch(DATA_BASE + p + '?v=' + Date.now()).then(r => r.ok ? r.json() : null).catch(() => null);
 
 function baseOpts(extra = {}) {
   const ink = css('--text-secondary'), grid = css('--grid');
