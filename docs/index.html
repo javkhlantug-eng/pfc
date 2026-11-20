@@ -84,7 +84,7 @@
   </div>
 
   <div class="card">
-    <h2>Сүүлийн 14 хоног: бодит ба таамаг</h2>
+    <h2>Сүүлийн 7 хоног: бодит ба таамаг</h2>
     <p>Өмнө нь гаргасан таамгийг бодит ачаалалтай харьцуулна (таамаг хадгалагдаж эхэлснээс хойш)</p>
     <div class="legend">
       <span><i style="background:var(--series-1)"></i>Бодит</span>
@@ -200,7 +200,7 @@ Chart.defaults.font.size = 12;
       data: { labels: rl, datasets: [
         { label: 'Бодит', data: recent.map(r => r.actual), borderColor: s1, borderWidth: 2, pointRadius: 0, tension: .2 },
         { label: 'Таамаг', data: recent.map(r => r.forecast), borderColor: s2, borderWidth: 2, pointRadius: 0, tension: .2, spanGaps: false } ] },
-      options: baseOpts({ scales: { ...baseOpts().scales, x: { ...baseOpts().scales.x, ticks: { ...baseOpts().scales.x.ticks, maxTicksLimit: 14,
+      options: baseOpts({ scales: { ...baseOpts().scales, x: { ...baseOpts().scales.x, ticks: { ...baseOpts().scales.x.ticks, maxTicksLimit: 7,
         callback: function (v) { const l = this.getLabelForValue(v); return l.slice(0, 5); } } } },
         plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip, callbacks: { label: c => ` ${c.dataset.label}: ${fmt(c.parsed.y)} МВт` } } } }) });
   }

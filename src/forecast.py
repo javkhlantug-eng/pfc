@@ -179,9 +179,9 @@ def main():
     log = log.drop_duplicates(["target_date", "hour"], keep="last").sort_values(["target_date", "hour"])
     log.to_csv(log_p, index=False)
 
-    # Сүүлийн 14 хоногийн бодит ба таамаг
+    # Сүүлийн 7 хоногийн бодит ба таамаг
     hist = frame.dropna(subset=["total_mw"])
-    last = hist[hist["date"] >= hist["date"].max() - pd.Timedelta(days=13)]
+    last = hist[hist["date"] >= hist["date"].max() - pd.Timedelta(days=6)]
     lg = log.assign(date=pd.to_datetime(log["target_date"]))
     last = last.merge(lg[["date", "hour", "p50"]], on=["date", "hour"], how="left")
     recent = [{"date": str(r.date.date()), "hour": int(r.hour), "actual": r.total_mw,
