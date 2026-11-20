@@ -25,6 +25,6 @@ FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 
 # Системийн боломжит чадал (МВт). Мэдэгдэж байвал оруулна:
 # дашбоард дээр таамаг энэ шугамыг давах эрсдэлийг харуулна.
-CAPACITY_MW = None
+CAPACITY_MW = 1800
 
 LOAD_COLS = ["thermal", "wind", "solar", "hydro", "battery", "import", "zes_oyu"]
