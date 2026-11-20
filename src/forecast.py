@@ -6,13 +6,20 @@
 import argparse
 import datetime as dt
 import json
-from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
+import sklearn
+try:  # scikit-learn < 1.0 (Python 3.6) дээр туршилтын модуль
+    from sklearn.experimental import enable_hist_gradient_boosting  # noqa: F401
+except ImportError:
+    pass
 from sklearn.ensemble import HistGradientBoostingRegressor
 
-from config import DATA, DOCS_DATA, TZ, CAPACITY_MW
+_SK = tuple(int(x) for x in sklearn.__version__.split(".")[:2])
+L1_LOSS = "absolute_error" if _SK >= (1, 0) else "least_absolute_deviation"
+
+from config import DATA, DOCS_DATA, CAPACITY_MW, ub_now, parse_date
 from features import FEATURES, build_frame
 
 BACKTEST_DAYS = 60
@@ -22,7 +29,7 @@ HOLDOUT_DAYS = 90
 
 
 def make_model(leaves=31, min_leaf=30):
-    return HistGradientBoostingRegressor(loss="absolute_error", max_iter=500, learning_rate=0.04,
+    return HistGradientBoostingRegressor(loss=L1_LOSS, max_iter=500, learning_rate=0.04,
                                          max_leaf_nodes=leaves, min_samples_leaf=min_leaf,
                                          l2_regularization=1.0, random_state=0)
 
@@ -135,8 +142,8 @@ def main():
     ap.add_argument("--no-backtest", action="store_true")
     a = ap.parse_args()
 
-    now = dt.datetime.now(ZoneInfo(TZ))
-    target = dt.date.fromisoformat(a.target) if a.target else now.date() + dt.timedelta(days=1)
+    now = ub_now()
+    target = parse_date(a.target) if a.target else now.date() + dt.timedelta(days=1)
 
     load = pd.read_csv(DATA / "load_hourly.csv", dtype={"date": str})
     load = load[pd.to_datetime(load["date"]).dt.date < target]

@@ -1,11 +1,23 @@
-"""Төслийн тохиргоо."""
+"""Төслийн тохиргоо. Python 3.6+ дээр ажиллана (Site5 хостинг)."""
+import datetime as _dt
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA = ROOT / "data"
-DOCS_DATA = ROOT / "docs" / "data"
+DATA = Path(os.environ.get("PFC_DATA", str(ROOT / "data")))
+DOCS_DATA = Path(os.environ.get("PFC_DOCS_DATA", str(ROOT / "docs" / "data")))
 
 TZ = "Asia/Ulaanbaatar"
+UB = _dt.timezone(_dt.timedelta(hours=8))   # Монгол улс зуны цаг хэрэглэдэггүй
+
+
+def ub_now():
+    """Улаанбаатарын одоогийн цаг (серверийн цагийн бүсээс үл хамаарна)."""
+    return _dt.datetime.now(UB)
+
+
+def parse_date(s):
+    return _dt.datetime.strptime(s, "%Y-%m-%d").date()
 
 # dis.energy.mn — Төвийн бүсийн эрчим хүчний систем (цагийн мэдээ)
 LOAD_URL = "https://dis.energy.mn/generation-chart/history"

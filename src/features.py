@@ -47,7 +47,7 @@ def build_frame(load: pd.DataFrame, weather: pd.DataFrame) -> pd.DataFrame:
     w = weather.rename(columns={"temperature_2m": "temp", "wind_speed_10m": "wind_speed"}).copy()
     w["time"] = pd.to_datetime(w["time"])
     w = w.set_index("time").sort_index()
-    w = w[~w.index.duplicated()].asfreq("h").interpolate(limit=6)
+    w = w[~w.index.duplicated()].asfreq(pd.offsets.Hour()).interpolate(limit=6)
     w["temp_mean24"] = w["temp"].rolling(24, min_periods=12).mean()
     w["temp_mean72"] = w["temp"].rolling(72, min_periods=36).mean()
     w["temp_change24"] = w["temp"] - w["temp"].shift(24)

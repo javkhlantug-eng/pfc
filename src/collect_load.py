@@ -12,13 +12,13 @@ import time
 import pandas as pd
 import requests
 
-from config import DATA, LOAD_URL, LOAD_START, REQUEST_DELAY_SEC, LOAD_COLS
+from config import DATA, LOAD_URL, LOAD_START, REQUEST_DELAY_SEC, LOAD_COLS, ub_now, parse_date
 
 OUT = DATA / "load_hourly.csv"
 HEADERS = {"User-Agent": "pfc-peak-forecast/1.0 (research)", "Accept": "application/json"}
 
 
-def fetch_day(day: dt.date, session: requests.Session) -> list[dict]:
+def fetch_day(day, session):
     r = session.get(LOAD_URL, params={"date": day.isoformat()}, headers=HEADERS, timeout=30)
     r.raise_for_status()
     js = r.json()
@@ -45,12 +45,12 @@ def main():
                     help="24 цаг бүрэн байгаа өдрүүдийг алгасах")
     a = ap.parse_args()
 
-    today = dt.date.today()
-    end = dt.date.fromisoformat(a.end) if a.end else today
+    today = ub_now().date()
+    end = parse_date(a.end) if a.end else today
     if a.days_back:
         start = end - dt.timedelta(days=a.days_back)
     else:
-        start = dt.date.fromisoformat(a.start or LOAD_START)
+        start = parse_date(a.start or LOAD_START)
 
     old = pd.read_csv(OUT, dtype={"date": str}) if OUT.exists() else pd.DataFrame()
     complete = set()

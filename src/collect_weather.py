@@ -9,7 +9,7 @@ import datetime as dt
 import pandas as pd
 import requests
 
-from config import DATA, LOCATIONS, WEATHER_VARS, ARCHIVE_URL, FORECAST_URL, LOAD_START, TZ
+from config import DATA, LOCATIONS, WEATHER_VARS, ARCHIVE_URL, FORECAST_URL, LOAD_START, TZ, ub_now, parse_date
 
 
 def _get(url, params):
@@ -21,7 +21,7 @@ def _get(url, params):
     return df
 
 
-def _weighted(frames: list[tuple[pd.DataFrame, float]]) -> pd.DataFrame:
+def _weighted(frames):
     """Хэд хэдэн цэгийн жинлэсэн дундаж. Нэг цэг бол шууд буцаана."""
     if len(frames) == 1:
         return frames[0][0]
@@ -54,11 +54,11 @@ def main():
 
     out = DATA / "weather_hourly.csv"
     old = pd.read_csv(out, parse_dates=["time"]) if out.exists() and not a.full else pd.DataFrame()
-    today = dt.date.today()
+    today = ub_now().date()
 
     # Archive нь ~5 хоногийн хоцрогдолтой.
     arch_end = today - dt.timedelta(days=6)
-    arch_start = (old["time"].max().date() - dt.timedelta(days=10)) if not old.empty else dt.date.fromisoformat(LOAD_START)
+    arch_start = (old["time"].max().date() - dt.timedelta(days=10)) if not old.empty else parse_date(LOAD_START)
     parts = [old] if not old.empty else []
     if arch_start <= arch_end:
         parts.append(fetch(ARCHIVE_URL, arch_start.isoformat(), arch_end.isoformat()))

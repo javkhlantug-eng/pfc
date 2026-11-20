@@ -5,15 +5,14 @@
 """
 import datetime as dt
 import json
-from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from config import DATA, DOCS_DATA, TZ, CAPACITY_MW
+from config import DATA, DOCS_DATA, CAPACITY_MW, ub_now
 
 
 def main():
-    now = dt.datetime.now(ZoneInfo(TZ))
+    now = ub_now()
     today = now.date().isoformat()
 
     load = pd.read_csv(DATA / "load_hourly.csv", dtype={"date": str})
