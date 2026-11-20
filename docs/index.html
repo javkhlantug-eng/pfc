@@ -200,8 +200,8 @@ Chart.defaults.font.size = 12;
       data: { labels: rl, datasets: [
         { label: 'Бодит', data: recent.map(r => r.actual), borderColor: s1, borderWidth: 2, pointRadius: 0, tension: .2 },
         { label: 'Таамаг', data: recent.map(r => r.forecast), borderColor: s2, borderWidth: 2, pointRadius: 0, tension: .2, spanGaps: false } ] },
-      options: baseOpts({ scales: { ...baseOpts().scales, x: { ...baseOpts().scales.x, ticks: { ...baseOpts().scales.x.ticks, maxTicksLimit: 7,
-        callback: function (v) { const l = this.getLabelForValue(v); return l.slice(0, 5); } } } },
+      options: baseOpts({ scales: { ...baseOpts().scales, x: { ...baseOpts().scales.x, ticks: { ...baseOpts().scales.x.ticks, autoSkip: false,
+        callback: function (v) { const l = this.getLabelForValue(v); return l.endsWith(' 12:00') ? l.slice(0, 5) : null; } } } },
         plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip, callbacks: { label: c => ` ${c.dataset.label}: ${fmt(c.parsed.y)} МВт` } } } }) });
   }
 
