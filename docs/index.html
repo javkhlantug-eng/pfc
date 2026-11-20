@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="mn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Оргил ачааллын таамаг — Төвийн бүс</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+  .viz-root {
+    color-scheme: light;
+    --surface-0: #f4f4f2; --surface-1: #fcfcfb; --border: #e3e2de;
+    --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #8a8984;
+    --grid: #ecebe7;
+    --series-1: #2a78d6; --series-1-band: rgba(42,120,214,.16);
+    --series-2: #eb6834;
+    --critical: #c62828;
+  }
+  @media (prefers-color-scheme: dark) {
+    .viz-root {
+      color-scheme: dark;
+      --surface-0: #111110; --surface-1: #1a1a19; --border: #2e2e2c;
+      --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e88;
+      --grid: #2a2a28;
+      --series-1: #3987e5; --series-1-band: rgba(57,135,229,.22);
+      --series-2: #d95926;
+      --critical: #ef6b6b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .viz-root { background: var(--surface-0); color: var(--text-primary); min-height: 100vh; padding: 24px; }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  header { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+  h1 { font-size: 22px; margin: 0; font-weight: 650; }
+  .sub { color: var(--text-secondary); font-size: 13px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .tile, .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; }
+  .tile { padding: 16px 18px; }
+  .tile .k { font-size: 12px; color: var(--text-secondary); text-transform: none; }
+  .tile .v { font-size: 30px; font-weight: 650; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .tile .v small { font-size: 15px; font-weight: 500; color: var(--text-secondary); }
+  .tile .n { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+  .tile.alert .v { color: var(--critical); }
+  .card { padding: 16px 18px 12px; margin-bottom: 16px; }
+  .card h2 { font-size: 15px; margin: 0 0 2px; font-weight: 600; }
+  .card p { margin: 0 0 10px; font-size: 12px; color: var(--text-secondary); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 860px) { .grid2 { grid-template-columns: 1fr; } }
+  .chart { position: relative; height: 300px; }
+  .chart.short { height: 150px; }
+  .legend { display: flex; gap: 16px; font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; flex-wrap: wrap; }
+  .legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+  .legend i.band { height: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  td, th { padding: 7px 4px; border-bottom: 1px solid var(--border); text-align: left; }
+  td:last-child, th:last-child { text-align: right; }
+  th { color: var(--text-secondary); font-weight: 500; }
+  details summary { cursor: pointer; font-size: 12px; color: var(--text-secondary); margin-top: 6px; }
+  .foot { font-size: 12px; color: var(--text-muted); margin-top: 8px; line-height: 1.6; }
+  .err { padding: 20px; color: var(--critical); }
+</style>
+</head>
+<body>
+<div class="viz-root">
+<div class="wrap">
+  <header>
+    <h1>Төвийн бүсийн оргил ачааллын таамаг</h1>
+    <div class="sub" id="issued">Ачаалж байна…</div>
+  </header>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="card">
+    <h2 id="fcTitle">Маргаашийн цагийн ачаалал</h2>
+    <p>Шугам — хамгийн магадлалтай утга (P50), сүүдэр — 80%-ийн хүрээ (P10–P90)</p>
+    <div class="legend" id="fcLegend">
+      <span><i style="background:var(--series-1)"></i>Таамаг P50</span>
+      <span><i class="band" style="background:var(--series-1-band)"></i>P10–P90</span>
+    </div>
+    <div class="chart"><canvas id="fcChart"></canvas></div>
+    <h2 style="margin-top:14px">Улаанбаатарын температурын таамаг</h2>
+    <div class="chart short"><canvas id="tChart"></canvas></div>
+    <details><summary>Хүснэгтээр харах</summary><div id="fcTable"></div></details>
+  </div>
+
+  <div class="card">
+    <h2>Сүүлийн 14 хоног: бодит ба таамаг</h2>
+    <p>Өмнө нь гаргасан таамгийг бодит ачаалалтай харьцуулна (таамаг хадгалагдаж эхэлснээс хойш)</p>
+    <div class="legend">
+      <span><i style="background:var(--series-1)"></i>Бодит</span>
+      <span><i style="background:var(--series-2)"></i>Таамаг P50</span>
+    </div>
+    <div class="chart"><canvas id="recentChart"></canvas></div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>Өдрийн оргил ачаалал ба дундаж температур</h2>
+      <p>Бүх түүх — нэг цэг нэг өдөр</p>
+      <div class="chart"><canvas id="scatter"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>Загварын нарийвчлал</h2>
+      <p id="mPeriod">Сүүлийн өдрүүдийг нууж шалгасан дүн</p>
+      <div id="metrics"></div>
+      <div class="foot">Шалгалтад бодит температур ашигладаг тул бодит ажиллагаанд (таамагласан температуртай) алдаа арай их байна.
+      «Энгийн арга» = 7 хоногийн өмнөх яг тэр өдрийн ачаалал.</div>
+    </div>
+  </div>
+
+  <div class="foot">Эх сурвалж: ачаалал — dis.energy.mn (ДҮТ ТӨХХК), температур — Open-Meteo (Улаанбаатар). Өдөр бүр автоматаар шинэчлэгдэнэ.</div>
+</div>
+</div>
+
+<script>
+const css = n => getComputedStyle(document.querySelector('.viz-root')).getPropertyValue(n).trim();
+const fmt = (v, d = 0) => v == null ? '—' : Number(v).toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: d });
+const get = p => fetch(p + '?v=' + Date.now()).then(r => r.ok ? r.json() : null).catch(() => null);
+
+function baseOpts(extra = {}) {
+  const ink = css('--text-secondary'), grid = css('--grid');
+  return {
+    responsive: true, maintainAspectRatio: false, animation: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: { legend: { display: false },
+      tooltip: { backgroundColor: css('--surface-1'), titleColor: css('--text-primary'), bodyColor: css('--text-primary'),
+                 borderColor: css('--border'), borderWidth: 1, padding: 10, boxPadding: 4 } },
+    scales: {
+      x: { grid: { display: false }, ticks: { color: ink, maxRotation: 0, autoSkipPadding: 12 }, border: { color: grid } },
+      y: { grid: { color: grid }, ticks: { color: ink }, border: { display: false } } },
+    ...extra };
+}
+// Hover crosshair
+const crosshair = { id: 'crosshair', afterDraw(c) {
+  const a = c.tooltip?._active; if (!a?.length) return;
+  const x = a[0].element.x, { top, bottom } = c.chartArea, g = c.ctx;
+  g.save(); g.beginPath(); g.moveTo(x, top); g.lineTo(x, bottom); g.lineWidth = 1; g.strokeStyle = css('--text-muted'); g.setLineDash([3, 3]); g.stroke(); g.restore();
+}};
+Chart.register(crosshair);
+Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+Chart.defaults.font.size = 12;
+
+(async () => {
+  const [fc, recent, daily, m] = await Promise.all(['data/forecast.json', 'data/recent.json', 'data/daily.json', 'data/metrics.json'].map(get));
+  if (!fc) { document.getElementById('tiles').innerHTML = '<div class="err">Таамгийн өгөгдөл олдсонгүй. GitHub Actions ажилласан эсэхийг шалгана уу.</div>'; return; }
+
+  const s1 = css('--series-1'), s2 = css('--series-2'), crit = css('--critical');
+  document.getElementById('issued').textContent = 'Таамаг гаргасан: ' + fc.issued_at.replace('T', ' ');
+  document.getElementById('fcTitle').textContent = fc.target_date + '-ны цагийн ачаалал';
+
+  const temps = fc.hours.map(h => h.temp).filter(t => t != null);
+  const cap = fc.capacity_mw;
+  const risk = cap && fc.peak.p90 >= cap;
+  document.getElementById('tiles').innerHTML = `
+    <div class="tile ${risk ? 'alert' : ''}"><div class="k">Маргаашийн оргил ачаалал</div>
+      <div class="v">${fmt(fc.peak.p50)} <small>МВт</small></div>
+      <div class="n">80% хүрээ: ${fmt(fc.peak.p10)} – ${fmt(fc.peak.p90)} МВт</div></div>
+    <div class="tile"><div class="k">Оргил цаг</div><div class="v">${fc.peak.label}</div>
+      <div class="n">${fc.target_date}</div></div>
+    <div class="tile"><div class="k">Хамгийн бага температур (УБ)</div>
+      <div class="v">${fmt(Math.min(...temps), 1)} <small>°C</small></div>
+      <div class="n">Дундаж ${fmt(temps.reduce((a, b) => a + b, 0) / temps.length, 1)} °C</div></div>
+    ${cap ? `<div class="tile ${risk ? 'alert' : ''}"><div class="k">Чадлын нөөц (P90-өөр)</div>
+      <div class="v">${fmt(cap - fc.peak.p90)} <small>МВт</small></div>
+      <div class="n">${risk ? '⚠ Хязгаарлалт хийх эрсдэлтэй' : '✓ Хүрэлцэхээр байна'} · чадал ${fmt(cap)} МВт</div></div>`
+      : m ? `<div class="tile"><div class="k">Оргилын дундаж алдаа</div><div class="v">±${fmt(m.peak_mae_mw)} <small>МВт</small></div>
+      <div class="n">Сүүлийн ${m.days} өдөр · ${fmt(m.peak_mape, 1)}%</div></div>` : ''}`;
+
+  // Маргаашийн муруй
+  const labels = fc.hours.map(h => h.label);
+  const ds = [
+    { label: 'P90', data: fc.hours.map(h => h.p90), borderWidth: 0, pointRadius: 0, fill: '+1', backgroundColor: css('--series-1-band') },
+    { label: 'P10', data: fc.hours.map(h => h.p10), borderWidth: 0, pointRadius: 0, fill: false },
+    { label: 'Таамаг P50', data: fc.hours.map(h => h.p50), borderColor: s1, borderWidth: 2, tension: .3,
+      pointRadius: fc.hours.map(h => h.hour === fc.peak.hour ? 5 : 0), pointBackgroundColor: s1,
+      pointBorderColor: css('--surface-1'), pointBorderWidth: 2, pointHoverRadius: 5 },
+  ];
+  if (cap) {
+    ds.push({ label: 'Боломжит чадал', data: labels.map(() => cap), borderColor: crit, borderWidth: 1.5, borderDash: [6, 4], pointRadius: 0 });
+    document.getElementById('fcLegend').insertAdjacentHTML('beforeend', `<span><i style="background:${crit}"></i>Боломжит чадал</span>`);
+  }
+  new Chart(document.getElementById('fcChart'), { type: 'line', data: { labels, datasets: ds },
+    options: baseOpts({ plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip,
+      callbacks: { label: c => ` ${c.dataset.label}: ${fmt(c.parsed.y)} МВт` } } } }) });
+
+  new Chart(document.getElementById('tChart'), { type: 'line',
+    data: { labels, datasets: [{ label: 'Температур', data: fc.hours.map(h => h.temp), borderColor: css('--text-secondary'), borderWidth: 2, pointRadius: 0, tension: .3 }] },
+    options: baseOpts({ plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip,
+      callbacks: { label: c => ` ${fmt(c.parsed.y, 1)} °C` } } } }) });
+
+  document.getElementById('fcTable').innerHTML = '<table><tr><th>Цаг</th><th>Темп. °C</th><th>P10</th><th>P50</th><th>P90 (МВт)</th></tr>' +
+    fc.hours.map(h => `<tr><td>${h.label}</td><td>${fmt(h.temp, 1)}</td><td>${fmt(h.p10)}</td><td>${fmt(h.p50)}</td><td>${fmt(h.p90)}</td></tr>`).join('') + '</table>';
+
+  // Сүүлийн 14 хоног
+  if (recent?.length) {
+    const rl = recent.map(r => r.date.slice(5) + ' ' + String(r.hour).padStart(2, '0') + ':00');
+    new Chart(document.getElementById('recentChart'), { type: 'line',
+      data: { labels: rl, datasets: [
+        { label: 'Бодит', data: recent.map(r => r.actual), borderColor: s1, borderWidth: 2, pointRadius: 0, tension: .2 },
+        { label: 'Таамаг', data: recent.map(r => r.forecast), borderColor: s2, borderWidth: 2, pointRadius: 0, tension: .2, spanGaps: false } ] },
+      options: baseOpts({ scales: { ...baseOpts().scales, x: { ...baseOpts().scales.x, ticks: { ...baseOpts().scales.x.ticks, maxTicksLimit: 14,
+        callback: function (v) { const l = this.getLabelForValue(v); return l.slice(0, 5); } } } },
+        plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip, callbacks: { label: c => ` ${c.dataset.label}: ${fmt(c.parsed.y)} МВт` } } } }) });
+  }
+
+  // Хамаарал
+  if (daily?.length) {
+    const pts = daily.filter(d => d.tmean != null).map(d => ({ x: d.tmean, y: d.peak, d: d.date }));
+    new Chart(document.getElementById('scatter'), { type: 'scatter',
+      data: { datasets: [{ data: pts, backgroundColor: s1 + '99', borderColor: css('--surface-1'), borderWidth: 1, pointRadius: 4, pointHoverRadius: 6 }] },
+      options: baseOpts({ interaction: { mode: 'nearest', intersect: true },
+        scales: { x: { ...baseOpts().scales.x, title: { display: true, text: 'Өдрийн дундаж температур, °C', color: css('--text-secondary') } },
+                  y: { ...baseOpts().scales.y, title: { display: true, text: 'Оргил, МВт', color: css('--text-secondary') } } },
+        plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip,
+          callbacks: { title: i => i[0].raw.d, label: c => ` ${fmt(c.raw.y)} МВт · ${fmt(c.raw.x, 1)} °C` } } } }) });
+  }
+
+  if (m) {
+    document.getElementById('mPeriod').textContent = `Шалгасан хугацаа: ${m.period[0]} – ${m.period[1]} (${m.days} өдөр)`;
+    document.getElementById('metrics').innerHTML = `<table>
+      <tr><th>Үзүүлэлт</th><th>Загвар</th><th>Энгийн арга</th></tr>
+      <tr><td>Оргилын дундаж алдаа</td><td>±${fmt(m.peak_mae_mw)} МВт</td><td>±${fmt(m.peak_mae_mw_naive)} МВт</td></tr>
+      <tr><td>Цагийн ачааллын алдаа (MAPE)</td><td>${fmt(m.hourly_mape, 1)}%</td><td>${fmt(m.hourly_mape_naive, 1)}%</td></tr>
+      <tr><td>Оргилын алдаа (MAPE)</td><td>${fmt(m.peak_mape, 1)}%</td><td>—</td></tr>
+      <tr><td>Оргил цагийг ±1 цагийн дотор</td><td>${fmt(m.peak_hour_within_1h_pct)}%</td><td>—</td></tr>
+      <tr><td>Бодит оргил 80% хүрээнд орсон</td><td>${fmt(m.peak_in_p10_p90_pct)}%</td><td>—</td></tr></table>`;
+  }
+})();
+</script>
+</body>
+</html>

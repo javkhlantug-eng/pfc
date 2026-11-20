@@ -1,0 +1,48 @@
+name: Түүхэн өгөгдөл татах (нэг удаа)
+
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: "Эхлэх огноо (YYYY-MM-DD)"
+        default: "2024-01-01"
+      end:
+        description: "Дуусах огноо (хоосон бол өнөөдөр)"
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pfc-data
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Сайт руу хандаж болох эсэхийг шалгах
+        run: curl -sS -m 30 -o /dev/null -w "dis.energy.mn HTTP %{http_code}\n" "https://dis.energy.mn/generation-chart/history?date=2025-01-15"
+      - name: Ачаалал татах
+        run: |
+          ARGS="--start ${{ inputs.start }} --skip-existing"
+          [ -n "${{ inputs.end }}" ] && ARGS="$ARGS --end ${{ inputs.end }}"
+          python src/collect_load.py $ARGS
+      - name: Цаг агаар татах
+        run: python src/collect_weather.py --full
+      - name: Таамаг
+        run: python src/forecast.py
+      - name: Хадгалах
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data docs/data
+          git diff --cached --quiet || git commit -m "Түүхэн өгөгдөл ${{ inputs.start }}-аас"
+          git pull --rebase && git push
