@@ -38,11 +38,17 @@ jobs:
       - name: Цаг агаар татах
         run: python src/collect_weather.py --full
       - name: Таамаг
+        id: forecast
+        continue-on-error: true
         run: python src/forecast.py
       - name: Хадгалах
+        if: ${{ !cancelled() }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data docs/data
           git diff --cached --quiet || git commit -m "Түүхэн өгөгдөл ${{ inputs.start }}-аас"
           git pull --rebase && git push
+      - name: Таамаг амжилтгүй бол алдаа гаргах
+        if: ${{ steps.forecast.outcome == 'failure' }}
+        run: exit 1

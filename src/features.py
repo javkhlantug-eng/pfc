@@ -19,7 +19,7 @@ FIXED = {(1, 1), (3, 8), (6, 1), (7, 11), (7, 12), (7, 13), (7, 14), (7, 15), (1
 FEATURES = [
     "hour", "dow", "doy_sin", "doy_cos", "is_weekend", "is_holiday", "near_holiday",
     "temp", "hdh", "temp_mean24", "temp_mean72", "temp_min_day", "temp_change24",
-    "wind", "cloud",
+    "wind_speed", "cloud_cover",
     "lag48", "lag168", "prev_day_peak", "prev_day_mean", "prev_day_temp_mean",
 ]
 
@@ -39,19 +39,19 @@ def _holiday_flag(dates: pd.Series, extra: set) -> pd.Series:
 def build_frame(load: pd.DataFrame, weather: pd.DataFrame) -> pd.DataFrame:
     """load: date,hour,total_mw (зорилтот өдрүүдэд total_mw хоосон байж болно)
     weather: time, temperature_2m, wind_speed_10m, cloud_cover — тасралтгүй цагийн цуваа."""
-    df = load.copy()
+    # Ачааллын файлд станцын төрлийн баганууд (wind, solar…) байдаг тул зөвхөн хэрэгтэйг нь авна
+    df = load[["date", "hour", "total_mw"]].copy()
     df["date"] = pd.to_datetime(df["date"])
     df["ts"] = df["date"] + pd.to_timedelta(df["hour"], unit="h")  # hour=1 -> 01:00
 
-    w = weather.rename(columns={"temperature_2m": "temp", "wind_speed_10m": "wind",
-                                "cloud_cover": "cloud"}).copy()
+    w = weather.rename(columns={"temperature_2m": "temp", "wind_speed_10m": "wind_speed"}).copy()
     w["time"] = pd.to_datetime(w["time"])
     w = w.set_index("time").sort_index()
     w = w[~w.index.duplicated()].asfreq("h").interpolate(limit=6)
     w["temp_mean24"] = w["temp"].rolling(24, min_periods=12).mean()
     w["temp_mean72"] = w["temp"].rolling(72, min_periods=36).mean()
     w["temp_change24"] = w["temp"] - w["temp"].shift(24)
-    df = df.merge(w[["temp", "wind", "cloud", "temp_mean24", "temp_mean72", "temp_change24"]],
+    df = df.merge(w[["temp", "wind_speed", "cloud_cover", "temp_mean24", "temp_mean72", "temp_change24"]],
                   left_on="ts", right_index=True, how="left")
 
     # Өдрийн хамгийн бага температур (тухайн өдрийн)

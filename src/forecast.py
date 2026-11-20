@@ -69,7 +69,7 @@ def daily_frame(frame):
         "peak": g["total_mw"].max(),
         "n": g["total_mw"].count(),
         "temp_mean_day": g["temp"].mean(), "temp_evening": eve["temp"].mean(),
-        "temp_mean72_eve": eve["temp_mean72"].mean(), "wind_mean": g["wind"].mean(),
+        "temp_mean72_eve": eve["temp_mean72"].mean(), "wind_mean": g["wind_speed"].mean(),
     })
     first = g.first()
     for c in ["dow", "doy_sin", "doy_cos", "is_weekend", "is_holiday", "near_holiday",
