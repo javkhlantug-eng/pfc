@@ -5,6 +5,7 @@ data/weather_forecast.csv — маргааш, нөгөөдрийн таамаг 
 """
 import argparse
 import datetime as dt
+import time
 
 import pandas as pd
 import requests
@@ -12,9 +13,18 @@ import requests
 from config import DATA, LOCATIONS, WEATHER_VARS, ARCHIVE_URL, FORECAST_URL, LOAD_START, TZ, ub_now, parse_date
 
 
-def _get(url, params):
-    r = requests.get(url, params=params, timeout=60)
-    r.raise_for_status()
+def _get(url, params, tries=4):
+    """Open-Meteo заримдаа удаан хариулдаг тул хэд хэдэн удаа оролдоно."""
+    for i in range(tries):
+        try:
+            r = requests.get(url, params=params, timeout=60)
+            r.raise_for_status()
+            break
+        except requests.RequestException as e:
+            if i == tries - 1:
+                raise
+            print("Open-Meteo алдаа ({}), {} сек дараа дахин оролдоно".format(e.__class__.__name__, 15 * (i + 1)))
+            time.sleep(15 * (i + 1))
     h = r.json()["hourly"]
     df = pd.DataFrame(h)
     df["time"] = pd.to_datetime(df["time"])
