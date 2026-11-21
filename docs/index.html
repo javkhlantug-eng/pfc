@@ -12,7 +12,7 @@
     --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #8a8984;
     --grid: #ecebe7;
     --series-1: #2a78d6; --series-1-band: rgba(42,120,214,.16);
-    --series-2: #eb6834; --series-2-band: rgba(235,104,52,.14); --series-3: #7a5bd6; --yr-1: #9aa4b2; --yr-2: #2a78d6; --yr-3: #d9480f;
+    --series-2: #eb6834; --series-2-band: rgba(235,104,52,.14); --series-3: #7a5bd6; --yr-0: #c9ced6; --yr-1: #8f99a8; --yr-2: #2a78d6; --yr-3: #d9480f;
     --critical: #c62828;
   }
   @media (prefers-color-scheme: dark) {
@@ -22,7 +22,7 @@
       --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e88;
       --grid: #2a2a28;
       --series-1: #3987e5; --series-1-band: rgba(57,135,229,.22);
-      --series-2: #d95926; --series-2-band: rgba(217,89,38,.20); --series-3: #a48cf0; --yr-1: #8a94a3; --yr-2: #3987e5; --yr-3: #f0662c;
+      --series-2: #d95926; --series-2-band: rgba(217,89,38,.20); --series-3: #a48cf0; --yr-0: #5c6370; --yr-1: #8a94a3; --yr-2: #3987e5; --yr-3: #f0662c;
       --critical: #ef6b6b;
     }
   }
@@ -116,7 +116,7 @@
   <div class="grid2">
     <div class="card">
       <h2>Өдрийн оргил ачаалал ба дундаж температур</h2>
-      <p>Нэг цэг нэг өдөр · шугам — тухайн оны дундаж хамаарал (квадрат регресс)</p>
+      <p>Нэг цэг нэг өдөр · жилийг 4-р сарын 1-нээс тоолно (өвөл бүтнээрээ нэг жилд) · шугам — тухайн жилийн дундаж хамаарал (шугаман регресс), МВт/°C — 1 °C хүйтрэхэд оргил хэдэн МВт өсөх</p>
       <div class="legend" id="scLegend"></div>
       <div class="chart"><canvas id="scatter"></canvas></div>
     </div>
@@ -265,32 +265,34 @@ Chart.defaults.font.size = 12;
 
   // Хамаарал — он бүрийн цэгүүд ба дундаж хамаарлын шугам
   if (daily?.length) {
-    const YC = { 2024: css('--yr-1'), 2025: css('--yr-2'), 2026: css('--yr-3') };
-    const colorOf = y => YC[y] || css('--text-muted');
-    // y = a + b·t + c·t² — хамгийн бага квадратын арга (3×3 тэгшитгэл)
-    const quadFit = P => {
-      const S = Array(5).fill(0), T = Array(3).fill(0);
-      for (const { x, y } of P) { let p = 1; for (let k = 0; k < 5; k++) { S[k] += p; if (k < 3) T[k] += p * y; p *= x; } }
-      const A = [[S[0], S[1], S[2], T[0]], [S[1], S[2], S[3], T[1]], [S[2], S[3], S[4], T[2]]];
-      for (let i = 0; i < 3; i++) { for (let j = i + 1; j < 3; j++) { const f = A[j][i] / A[i][i]; for (let k = i; k < 4; k++) A[j][k] -= f * A[i][k]; } }
-      const c = [0, 0, 0]; for (let i = 2; i >= 0; i--) { let v = A[i][3]; for (let k = i + 1; k < 3; k++) v -= A[i][k] * c[k]; c[i] = v / A[i][i]; }
-      return t => c[0] + c[1] * t + c[2] * t * t;
+    // Жилийг 4-р сарын 1-нээс эхлүүлнэ: 2025-04-01…2026-03-31 → «2025–26»
+    const seasonOf = ds => { const y = +ds.slice(0, 4), m = +ds.slice(5, 7), s0 = m >= 4 ? y : y - 1; return `${s0}–${String((s0 + 1) % 100).padStart(2, '0')}`; };
+    // Шинэ жил тод, хуучин нь бүдэг: хамгийн сүүлийнх улбар шар, өмнөх нь цэнхэр, бусад нь саарал
+    const PAL = [css('--yr-3'), css('--yr-2'), css('--yr-1'), css('--yr-0')];
+    // y = a + b·t — хамгийн бага квадратын шулуун (дутуу жилд ч тогтвортой, налууг харьцуулахад ойлгомжтой)
+    const linFit = P => {
+      const n = P.length, mx = P.reduce((s, p) => s + p.x, 0) / n, my = P.reduce((s, p) => s + p.y, 0) / n;
+      let sxy = 0, sxx = 0; for (const p of P) { sxy += (p.x - mx) * (p.y - my); sxx += (p.x - mx) ** 2; }
+      const b = sxy / sxx, a = my - b * mx;
+      const f = t => a + b * t; f.slope = b; return f;
     };
     const byYear = {};
     daily.filter(d => d.tmean != null).forEach(d => {
-      const y = d.date.slice(0, 4); (byYear[y] = byYear[y] || []).push({ x: d.tmean, y: d.peak, d: d.date });
+      const y = seasonOf(d.date); (byYear[y] = byYear[y] || []).push({ x: d.tmean, y: d.peak, d: d.date });
     });
     const years = Object.keys(byYear).sort();
     const sets = [], legend = [];
-    years.forEach(y => {
-      const P = byYear[y], col = colorOf(y);
+    years.forEach((y, i) => {
+      const P = byYear[y], col = PAL[Math.min(years.length - 1 - i, PAL.length - 1)];
+      const months = new Set(P.map(p => p.d.slice(0, 7))).size;
       sets.push({ label: y, data: P, backgroundColor: col + '55', borderColor: 'transparent', pointRadius: 3, pointHoverRadius: 5, order: 2 });
       if (P.length >= 30) {
-        const f = quadFit(P), xs = P.map(p => p.x), lo = Math.min(...xs), hi = Math.max(...xs), line = [];
-        for (let t = lo; t <= hi + 1e-9; t += (hi - lo) / 40) line.push({ x: t, y: f(t), fit: true });
+        const f = linFit(P), xs = P.map(p => p.x), lo = Math.min(...xs), hi = Math.max(...xs), line = [];
+        line.push({ x: lo, y: f(lo), fit: true }, { x: hi, y: f(hi), fit: true });
         sets.push({ label: y + ' дундаж', data: line, showLine: true, borderColor: col, borderWidth: 3, pointRadius: 0, pointHoverRadius: 0, tension: .2, order: 1 });
       }
-      legend.push(`<span><i style="background:${col}"></i>${y} (${P.length} өдөр)</span>`);
+      const slope = P.length >= 30 ? ` · ${fmt(-linFit(P).slope, 1)} МВт/°C` : '';
+      legend.push(`<span><i style="background:${col}"></i>${y} (${P.length} өдөр${months < 12 ? ', дутуу' : ''}${slope})</span>`);
     });
     document.getElementById('scLegend').innerHTML = legend.join('');
     new Chart(document.getElementById('scatter'), { type: 'scatter', data: { datasets: sets },
