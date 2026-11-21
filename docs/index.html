@@ -12,7 +12,7 @@
     --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #8a8984;
     --grid: #ecebe7;
     --series-1: #2a78d6; --series-1-band: rgba(42,120,214,.16);
-    --series-2: #eb6834; --series-2-band: rgba(235,104,52,.14);
+    --series-2: #eb6834; --series-2-band: rgba(235,104,52,.14); --series-3: #7a5bd6;
     --critical: #c62828;
   }
   @media (prefers-color-scheme: dark) {
@@ -22,7 +22,7 @@
       --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e88;
       --grid: #2a2a28;
       --series-1: #3987e5; --series-1-band: rgba(57,135,229,.22);
-      --series-2: #d95926; --series-2-band: rgba(217,89,38,.20);
+      --series-2: #d95926; --series-2-band: rgba(217,89,38,.20); --series-3: #a48cf0;
       --critical: #ef6b6b;
     }
   }
@@ -82,6 +82,7 @@
       <span><i style="background:var(--series-1)"></i>Бодит гүйцэтгэл</span>
       <span><i style="background:var(--series-2)"></i>Таамаг P50</span>
       <span><i class="band" style="background:var(--series-2-band)"></i>P10–P90</span>
+      <span><i style="background:var(--series-3)"></i>Шинэчилсэн таамаг (бодит гүйцэтгэлээр)</span>
     </div>
     <div class="chart big"><canvas id="tdChart"></canvas></div>
   </div>
@@ -171,6 +172,7 @@ function drawToday(td) {
   if (S.actual_peak != null) mini.push(`<div>Өнөөдрийн оргил (одоогоор)<b>${fmt(S.actual_peak)} <small>МВт · ${S.actual_peak_label}</small></b></div>`);
   if (S.fc_peak != null) mini.push(`<div>Таамагласан оргил<b>${fmt(S.fc_peak)} <small>МВт · ${S.fc_peak_label}</small></b></div>`);
   if (S.last_actual != null) mini.push(`<div>Сүүлийн цаг (${S.last_label})<b>${fmt(S.last_actual)} <small>МВт${S.last_p50 != null ? ` · таамаг ${fmt(S.last_p50)}` : ''}</small></b></div>`);
+  if (S.now_peak != null) mini.push(`<div>Шинэчилсэн оргил (${S.now_basis_label} байдлаар)<b>${fmt(S.now_peak)} <small>МВт · ${S.now_peak_label} · ${S.now_dev_pct > 0 ? '+' : ''}${fmt(S.now_dev_pct, 1)}%</small></b></div>`);
   if (S.mape_so_far != null) mini.push(`<div>Таамгийн алдаа (${S.hours_compared} цаг)<b>${fmt(S.mape_so_far, 1)} <small>%</small></b></div>`);
   document.getElementById('tdMini').innerHTML = mini.join('');
   const H = td.hours, labels = H.map(h => h.label);
@@ -178,6 +180,7 @@ function drawToday(td) {
     { label: 'P90', data: H.map(h => h.p90), borderWidth: 0, pointRadius: 0, fill: '+1', backgroundColor: css('--series-2-band') },
     { label: 'P10', data: H.map(h => h.p10), borderWidth: 0, pointRadius: 0, fill: false },
     { label: 'Таамаг P50', data: H.map(h => h.p50), borderColor: s2, borderWidth: 2, borderDash: [6, 4], pointRadius: 0, tension: .3 },
+    { label: 'Шинэчилсэн таамаг', data: H.map(h => h.upd ?? null), borderColor: css('--series-3'), borderWidth: 2, borderDash: [2, 3], pointRadius: 0, tension: .3, spanGaps: false },
     { label: 'Бодит', data: H.map(h => h.actual), borderColor: s1, borderWidth: 2.5, tension: .3, spanGaps: false,
       pointRadius: H.map(h => h.actual != null && h.label === S.last_label ? 5 : 0), pointBackgroundColor: s1,
       pointBorderColor: css('--surface-1'), pointBorderWidth: 2, pointHoverRadius: 5 },

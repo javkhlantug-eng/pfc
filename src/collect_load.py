@@ -27,7 +27,8 @@ def fetch_day(day, session):
         total = h.get("total_consumption_mw")
         if total is None:
             continue
-        row = {"date": day.isoformat(), "hour": int(h["hour"]), "total_mw": float(total)}
+        # API өдрийн сүүлийн цагийг (24:00) "hour": 0, "time": "00:00" гэж өгдөг → 24 болгоно
+        row = {"date": day.isoformat(), "hour": int(h["hour"]) or 24, "total_mw": float(total)}
         summ = h.get("station_summary") or {}
         if isinstance(summ, dict):
             for c in LOAD_COLS:
@@ -63,6 +64,8 @@ def main():
         df = pd.concat([old, new], ignore_index=True) if not new.empty else old
         if df.empty:
             return df
+        df = df.copy()
+        df.loc[df["hour"] == 0, "hour"] = 24          # хуучин файлд хадгалагдсан 0 → 24
         df = (df.drop_duplicates(["date", "hour"], keep="last")
                 .sort_values(["date", "hour"]).reset_index(drop=True))
         DATA.mkdir(parents=True, exist_ok=True)

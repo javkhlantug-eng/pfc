@@ -21,8 +21,9 @@ from sklearn.ensemble import HistGradientBoostingRegressor
 _SK = tuple(int(x) for x in sklearn.__version__.split(".")[:2])
 L1_LOSS = "absolute_error" if _SK >= (1, 0) else "least_absolute_deviation"
 
-from config import DATA, DOCS_DATA, CAPACITY_MW, ub_now, parse_date
+from config import DATA, DOCS_DATA, CAPACITY_MW, ub_now, parse_date, norm_hours
 from features import FEATURES, build_frame
+from learning import hourly_correction, peak_correction, blend_band
 
 BACKTEST_DAYS = 60
 
@@ -211,7 +212,7 @@ def main():
     now = ub_now()
     target = parse_date(a.target) if a.target else now.date() + dt.timedelta(days=1)
 
-    load = pd.read_csv(DATA / "load_hourly.csv", dtype={"date": str})
+    load = norm_hours(pd.read_csv(DATA / "load_hourly.csv", dtype={"date": str}))
     load = load[pd.to_datetime(load["date"]).dt.date < target]
     weather = pd.read_csv(DATA / "weather_hourly.csv")
     fc_path = DATA / "weather_forecast.csv"
@@ -227,10 +228,24 @@ def main():
         raise SystemExit(f"{target}-ний температурын таамаг алга. collect_weather.py-г ажиллуулна уу.")
     test[["p10", "p50", "p90"]] = fit_predict(train, test)
 
+    # --- Бодит таамгийн алдаанаас суралцах (зөвхөн энэ шинэ таамагт хэрэглэнэ) ---
+    log_p, plog_p = DATA / "forecast_log.csv", DATA / "peak_log.csv"
+    old_log = pd.read_csv(log_p, dtype={"target_date": str}) if log_p.exists() else None
+    old_plog = pd.read_csv(plog_p, dtype={"target_date": str}) if plog_p.exists() else None
+    test["raw_p50"] = test["p50"]
+    hcorr, h_n = hourly_correction(old_log, load, target)
+    if hcorr:
+        f = 1 + test["hour"].map(hcorr).fillna(0.0)
+        test[["p10", "p50", "p90"]] = test[["p10", "p50", "p90"]].mul(f, axis=0)
+
     ph, _ = peak_of(test, "p50")                       # оргил цаг — цагийн муруйгаас
     dd = daily_frame(frame[frame["date"].dt.date <= target])
     tdate = pd.Timestamp(target)
-    pk = fit_predict_daily(dd[dd.index < tdate], dd.loc[[tdate]]).iloc[0]   # оргил МВт — өдрийн загвараас
+    pk = fit_predict_daily(dd[dd.index < tdate], dd.loc[[tdate]]).iloc[0].copy()   # оргил МВт — өдрийн загвараас
+    pk_raw = float(pk["p50"])
+    pcorr, pband, p_n = peak_correction(old_plog, load, target)
+    pk[["p10", "p50", "p90"]] = pk[["p10", "p50", "p90"]] * (1 + pcorr)
+    pk["p10"], pk["p90"] = blend_band(pk["p50"], pk["p10"], pk["p90"], pband, p_n)
     fc = {
         "issued_at": now.isoformat(timespec="minutes"),
         "target_date": target.isoformat(),
@@ -242,15 +257,22 @@ def main():
                    "temp": None if pd.isna(r.temp) else round(float(r.temp), 1)}
                   for r in test.itertuples()],
         "train_days": int(train["date"].nunique()),
+        "learning": {"peak_days": p_n, "peak_correction_pct": round(pcorr * 100, 2),
+                     "hourly_days": h_n,
+                     "hourly_correction_pct": {str(k): round(v * 100, 2) for k, v in sorted(hcorr.items())}},
     }
 
     # Таамгийн түүх — өчигдрийн таамгийг бодит гүйцэтгэлтэй харьцуулах
-    log_p = DATA / "forecast_log.csv"
-    new_log = test[["hour", "p10", "p50", "p90"]].assign(target_date=target.isoformat(),
-                                                         issued_at=fc["issued_at"]).round(1)
-    log = pd.concat([pd.read_csv(log_p), new_log]) if log_p.exists() else new_log
+    new_log = test[["hour", "p10", "p50", "p90", "raw_p50"]].assign(target_date=target.isoformat(),
+                                                                    issued_at=fc["issued_at"]).round(1)
+    log = pd.concat([old_log, new_log], sort=False) if old_log is not None else new_log
     log = log.drop_duplicates(["target_date", "hour"], keep="last").sort_values(["target_date", "hour"])
     log.to_csv(log_p, index=False)
+    new_pl = pd.DataFrame([{"target_date": target.isoformat(), "issued_at": fc["issued_at"], "hour": ph,
+                            "raw_p50": round(pk_raw, 1), "p10": fc["peak"]["p10"], "p50": fc["peak"]["p50"],
+                            "p90": fc["peak"]["p90"]}])
+    plog = pd.concat([old_plog, new_pl], sort=False) if old_plog is not None else new_pl
+    plog.drop_duplicates("target_date", keep="last").sort_values("target_date").to_csv(plog_p, index=False)
 
     # Сүүлийн 7 хоногийн бодит ба таамаг
     hist = frame.dropna(subset=["total_mw"])
@@ -281,6 +303,7 @@ def main():
             m["computed_at"] = fc["issued_at"]
             dump("metrics.json", m)
             print("Шалгалт:", m)
+    print("Суралцах засвар: оргил {:+.2f}% ({} өдөр), цагийн {} өдөр".format(pcorr * 100, p_n, h_n))
     print(f"{target} оргил: {fc['peak']['label']} цагт ~{fc['peak']['p50']} МВт "
           f"(P10–P90: {fc['peak']['p10']}–{fc['peak']['p90']})")
 

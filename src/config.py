@@ -40,3 +40,10 @@ FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 CAPACITY_MW = 1800
 
 LOAD_COLS = ["thermal", "wind", "solar", "hydro", "battery", "import", "zes_oyu"]
+
+
+def norm_hours(df):
+    """Хуучин өгөгдөлд өдрийн сүүлийн цаг 0 гэж хадгалагдсан байж болно → 24."""
+    df = df.copy()
+    df.loc[df["hour"] == 0, "hour"] = 24
+    return df.drop_duplicates(["date", "hour"], keep="last")

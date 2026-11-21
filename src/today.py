@@ -1,5 +1,9 @@
 """Өнөөдрийн таамаг ба гүйцэтгэл → docs/data/today.json (цаг тутам ажиллана).
 
+Шинэчилсэн таамаг (nowcast): сүүлийн 3 цагт бодит ачаалал өчигдрийн таамгаас хэдэн %
+зөрж байгааг (r) тооцоод, үлдсэн цагуудын таамгийг тэр зөрүүгээр засна. Зөрүүний нөлөө
+цаг холдох тусам буурна: жин = 0.5^(Δцаг / 8). Өчигдрийн анхны таамаг өөрчлөгдөхгүй.
+
 Таамаг нь өмнөх өдрийн 02:00 цагт гаргаж data/forecast_log.csv-д хадгалсан утга.
 Гүйцэтгэл нь data/load_hourly.csv-д байгаа өнөөдрийн цагуудын бодит ачаалал.
 """
@@ -8,14 +12,16 @@ import json
 
 import pandas as pd
 
-from config import DATA, DOCS_DATA, CAPACITY_MW, ub_now
+HALF_LIFE_H = 8
+
+from config import DATA, DOCS_DATA, CAPACITY_MW, ub_now, norm_hours
 
 
 def main():
     now = ub_now()
     today = now.date().isoformat()
 
-    load = pd.read_csv(DATA / "load_hourly.csv", dtype={"date": str})
+    load = norm_hours(pd.read_csv(DATA / "load_hourly.csv", dtype={"date": str}))
     act = load[load["date"] == today].set_index("hour")["total_mw"]
 
     log_p = DATA / "forecast_log.csv"
@@ -47,6 +53,35 @@ def main():
     if with_fc:
         mape = sum(abs(r["actual"] - r["p50"]) / r["actual"] for r in with_fc) / len(with_fc) * 100
         summary.update(mape_so_far=round(mape, 2), hours_compared=len(with_fc))
+
+    # --- Шинэчилсэн таамаг (nowcast) ---
+    if with_fc:
+        last3 = with_fc[-3:]
+        r = sum(x["actual"] / x["p50"] for x in last3) / len(last3)
+        last_h = done[-1]["hour"]
+        w = lambda h: 0.5 ** ((h - last_h) / HALF_LIFE_H)
+        for row in hours:
+            if row["hour"] == last_h:
+                row["upd"] = row["actual"]          # шугам сүүлийн бодит цэгээс эхэлнэ
+            elif row["hour"] > last_h and row["p50"] is not None:
+                row["upd"] = round(row["p50"] * (1 + (r - 1) * w(row["hour"])), 1)
+        # Оргил: өчигдрийн өдрийн оргилын таамаг (байвал), эс бөгөөс муруйн дээд цэг
+        base_pk, pk_h = summary.get("fc_peak"), int(summary.get("fc_peak_label", "19:00")[:2])
+        plog_p = DATA / "peak_log.csv"
+        if plog_p.exists():
+            pl = pd.read_csv(plog_p, dtype={"target_date": str})
+            pl = pl[pl["target_date"] == today]
+            if not pl.empty:
+                base_pk, pk_h = float(pl["p50"].iloc[0]), int(pl["hour"].iloc[0])
+                summary.update(fc_peak=base_pk, fc_peak_label="{:02d}:00".format(pk_h),
+                               fc_peak_p90=float(pl["p90"].iloc[0]))
+        if base_pk is not None:
+            if pk_h > last_h:
+                now_pk = base_pk * (1 + (r - 1) * w(pk_h))
+                summary.update(now_peak=round(now_pk, 1), now_peak_label="{:02d}:00".format(pk_h))
+            else:   # таамагласан оргилын цаг өнгөрсөн
+                summary.update(now_peak=summary.get("actual_peak"), now_peak_label=summary.get("actual_peak_label"))
+        summary.update(now_dev_pct=round((r - 1) * 100, 2), now_basis_label=done[-1]["label"])
 
     out = {"date": today, "updated_at": now.isoformat(timespec="minutes"),
            "forecast_issued_at": issued, "capacity_mw": CAPACITY_MW,
