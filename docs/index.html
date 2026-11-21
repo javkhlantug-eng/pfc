@@ -280,7 +280,10 @@ Chart.defaults.font.size = 12;
     daily.filter(d => d.tmean != null).forEach(d => {
       const y = seasonOf(d.date); (byYear[y] = byYear[y] || []).push({ x: d.tmean, y: d.peak, d: d.date });
     });
-    const years = Object.keys(byYear).sort();
+    // Дутуу жилүүдээс зөвхөн хамгийн сүүлийнхийг (одоогийн) үлдээнэ — эхний дутуу жилийг (2023–24) хасна
+    const monthsOf = y => new Set(byYear[y].map(p => p.d.slice(0, 7))).size;
+    const allY = Object.keys(byYear).sort();
+    const years = allY.filter((y, i) => i === allY.length - 1 || monthsOf(y) >= 12);
     const sets = [], legend = [];
     years.forEach((y, i) => {
       const P = byYear[y], col = PAL[Math.min(years.length - 1 - i, PAL.length - 1)];
