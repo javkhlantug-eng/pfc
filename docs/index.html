@@ -53,6 +53,10 @@
   .mini div { font-size: 12px; color: var(--text-secondary); }
   .mini b { display: block; font-size: 22px; font-weight: 650; color: var(--text-primary); font-variant-numeric: tabular-nums; margin-top: 2px; }
   .mini b small { font-size: 13px; font-weight: 500; color: var(--text-secondary); }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin: 2px 0 10px; }
+  .seg button { font: inherit; font-size: 12px; padding: 5px 10px; border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; }
+  .seg button + button { border-left: 1px solid var(--border); }
+  .seg button.on { background: var(--surface-0); color: var(--text-primary); font-weight: 600; }
   h3.sec { font-size: 15px; font-weight: 600; margin: 22px 0 10px; color: var(--text-secondary); }
   .legend { display: flex; gap: 16px; font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; flex-wrap: wrap; }
   .legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
@@ -116,7 +120,10 @@
   <div class="grid2">
     <div class="card">
       <h2>Өдрийн оргил ачаалал ба дундаж температур</h2>
-      <p>Нэг цэг нэг өдөр · жилийг 4-р сарын 1-нээс тоолно (өвөл бүтнээрээ нэг жилд) · шугам — тухайн жилийн дундаж хамаарал (шугаман регресс), МВт/°C — 1 °C хүйтрэхэд оргил хэдэн МВт өсөх</p>
+      <p>Нэг цэг нэг өдөр · жилийг 4-р сарын 1-нээс тоолно · шугам — тухайн жилийн дундаж хамаарал (шугаман регресс), МВт/°C — 1 °C хүйтрэхэд оргил хэдэн МВт өсөх</p>
+      <div class="seg" id="scMode">
+        <button data-m="cool" class="on">Хүйтрэх үе (7–1 сар)</button><button data-m="warm">Дулаарах үе (2–6 сар)</button><button data-m="all">Бүтэн жил</button>
+      </div>
       <div class="legend" id="scLegend"></div>
       <div class="chart"><canvas id="scatter"></canvas></div>
     </div>
@@ -263,48 +270,61 @@ Chart.defaults.font.size = 12;
         plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip, callbacks: { label: c => ` ${c.dataset.label}: ${fmt(c.parsed.y)} МВт` } } } }) });
   }
 
-  // Хамаарал — он бүрийн цэгүүд ба дундаж хамаарлын шугам
+  // Хамаарал — жил бүрийн цэгүүд ба дундаж хамаарлын шугам
+  // Ижил температурт намар хавраас 150–200 МВт өндөр байдаг тул хүйтрэх/дулаарах үеийг тусад нь харуулна.
   if (daily?.length) {
+    const MODES = { cool: [7, 8, 9, 10, 11, 12, 1], warm: [2, 3, 4, 5, 6], all: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] };
     // Жилийг 4-р сарын 1-нээс эхлүүлнэ: 2025-04-01…2026-03-31 → «2025–26»
     const seasonOf = ds => { const y = +ds.slice(0, 4), m = +ds.slice(5, 7), s0 = m >= 4 ? y : y - 1; return `${s0}–${String((s0 + 1) % 100).padStart(2, '0')}`; };
-    // Шинэ жил тод, хуучин нь бүдэг: хамгийн сүүлийнх улбар шар, өмнөх нь цэнхэр, бусад нь саарал
+    // Шинэ жил тод, хуучин нь бүдэг
     const PAL = [css('--yr-3'), css('--yr-2'), css('--yr-1'), css('--yr-0')];
-    // y = a + b·t — хамгийн бага квадратын шулуун (дутуу жилд ч тогтвортой, налууг харьцуулахад ойлгомжтой)
+    // y = a + b·t — хамгийн бага квадратын шулуун
     const linFit = P => {
       const n = P.length, mx = P.reduce((s, p) => s + p.x, 0) / n, my = P.reduce((s, p) => s + p.y, 0) / n;
       let sxy = 0, sxx = 0; for (const p of P) { sxy += (p.x - mx) * (p.y - my); sxx += (p.x - mx) ** 2; }
       const b = sxy / sxx, a = my - b * mx;
       const f = t => a + b * t; f.slope = b; return f;
     };
-    const byYear = {};
-    daily.filter(d => d.tmean != null).forEach(d => {
-      const y = seasonOf(d.date); (byYear[y] = byYear[y] || []).push({ x: d.tmean, y: d.peak, d: d.date });
-    });
-    // Дутуу жилүүдээс зөвхөн хамгийн сүүлийнхийг (одоогийн) үлдээнэ — эхний дутуу жилийг (2023–24) хасна
-    const monthsOf = y => new Set(byYear[y].map(p => p.d.slice(0, 7))).size;
-    const allY = Object.keys(byYear).sort();
-    const years = allY.filter((y, i) => i === allY.length - 1 || monthsOf(y) >= 12);
-    const sets = [], legend = [];
-    years.forEach((y, i) => {
-      const P = byYear[y], col = PAL[Math.min(years.length - 1 - i, PAL.length - 1)];
-      const months = new Set(P.map(p => p.d.slice(0, 7))).size;
-      sets.push({ label: y, data: P, backgroundColor: col + '55', borderColor: 'transparent', pointRadius: 3, pointHoverRadius: 5, order: 2 });
-      if (P.length >= 30) {
-        const f = linFit(P), xs = P.map(p => p.x), lo = Math.min(...xs), hi = Math.max(...xs), line = [];
-        line.push({ x: lo, y: f(lo), fit: true }, { x: hi, y: f(hi), fit: true });
-        sets.push({ label: y + ' дундаж', data: line, showLine: true, borderColor: col, borderWidth: 3, pointRadius: 0, pointHoverRadius: 0, tension: .2, order: 1 });
-      }
-      const slope = P.length >= 30 ? ` · ${fmt(-linFit(P).slope, 1)} МВт/°C` : '';
-      legend.push(`<span><i style="background:${col}"></i>${y} (${P.length} өдөр${months < 12 ? ', дутуу' : ''}${slope})</span>`);
-    });
-    document.getElementById('scLegend').innerHTML = legend.join('');
-    new Chart(document.getElementById('scatter'), { type: 'scatter', data: { datasets: sets },
-      options: baseOpts({ interaction: { mode: 'nearest', intersect: true },
-        scales: { x: { ...baseOpts().scales.x, title: { display: true, text: 'Өдрийн дундаж температур, °C', color: css('--text-secondary') } },
-                  y: { ...baseOpts().scales.y, title: { display: true, text: 'Оргил, МВт', color: css('--text-secondary') } } },
-        plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip,
-          filter: i => !i.raw.fit,
-          callbacks: { title: i => i[0].raw.d, label: c => ` ${fmt(c.raw.y)} МВт · ${fmt(c.raw.x, 1)} °C` } } } }) });
+    let chart = null;
+    const draw = mode => {
+      const months = MODES[mode];
+      const byYear = {};
+      daily.filter(d => d.tmean != null && months.includes(+d.date.slice(5, 7))).forEach(d => {
+        // Хавар (2–6 сар) 4-р сарын 1-ийг дайрдаг тул хуанлийн жилээр нь бүлэглэнэ
+        const y = mode === 'warm' ? `${d.date.slice(0, 4)} оны хавар` : seasonOf(d.date); (byYear[y] = byYear[y] || []).push({ x: d.tmean, y: d.peak, d: d.date });
+      });
+      const monthsOf = y => new Set(byYear[y].map(p => p.d.slice(0, 7))).size;
+      const allY = Object.keys(byYear).sort();
+      // Дутуу жилүүдээс зөвхөн хамгийн сүүлийнхийг үлдээнэ
+      const years = allY.filter((y, i) => (i === allY.length - 1 && allY.length > 1) || monthsOf(y) >= months.length);
+      const sets = [], legend = [];
+      years.forEach((y, i) => {
+        const P = byYear[y], col = PAL[Math.min(years.length - 1 - i, PAL.length - 1)];
+        sets.push({ label: y, data: P, backgroundColor: col + '55', borderColor: 'transparent', pointRadius: 3, pointHoverRadius: 5, order: 2 });
+        let slope = '';
+        if (P.length >= 20) {
+          const f = linFit(P), xs = P.map(p => p.x), lo = Math.min(...xs), hi = Math.max(...xs);
+          sets.push({ label: y + ' дундаж', data: [{ x: lo, y: f(lo), fit: true }, { x: hi, y: f(hi), fit: true }], showLine: true,
+                      borderColor: col, borderWidth: 3, pointRadius: 0, pointHoverRadius: 0, order: 1 });
+          slope = ` · ${fmt(-f.slope, 1)} МВт/°C · 0 °C-т ${fmt(f(0))} МВт`;
+        }
+        legend.push(`<span><i style="background:${col}"></i>${y} (${P.length} өдөр${monthsOf(y) < months.length ? ', дутуу' : ''}${slope})</span>`);
+      });
+      document.getElementById('scLegend').innerHTML = legend.join('');
+      if (chart) chart.destroy();
+      chart = new Chart(document.getElementById('scatter'), { type: 'scatter', data: { datasets: sets },
+        options: baseOpts({ interaction: { mode: 'nearest', intersect: true },
+          scales: { x: { ...baseOpts().scales.x, min: -40, max: 30, title: { display: true, text: 'Өдрийн дундаж температур, °C', color: css('--text-secondary') } },
+                    y: { ...baseOpts().scales.y, title: { display: true, text: 'Оргил, МВт', color: css('--text-secondary') } } },
+          plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip,
+            filter: i => !i.raw.fit,
+            callbacks: { title: i => i[0].raw.d, label: c => ` ${fmt(c.raw.y)} МВт · ${fmt(c.raw.x, 1)} °C` } } } }) });
+    };
+    document.querySelectorAll('#scMode button').forEach(btn => btn.addEventListener('click', () => {
+      document.querySelectorAll('#scMode button').forEach(b => b.classList.toggle('on', b === btn));
+      draw(btn.dataset.m);
+    }));
+    draw('cool');
   }
 
   if (m) {
