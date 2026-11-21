@@ -14,7 +14,7 @@ import pandas as pd
 
 HALF_LIFE_H = 8
 
-from config import DATA, DOCS_DATA, CAPACITY_MW, ub_now, norm_hours
+from config import DATA, DOCS_DATA, CAPACITY_MW, ub_now, norm_hours, likely_curtailed
 
 
 def main():
@@ -39,14 +39,20 @@ def main():
             row[k] = None if fc.empty or h not in fc.index else float(fc.loc[h, k])
         hours.append(row)
 
+    for r in hours:
+        r["curt"] = bool(likely_curtailed(r["actual"], r["p10"]))
     done = [r for r in hours if r["actual"] is not None]
-    with_fc = [r for r in done if r["p50"] is not None]
+    # Хязгаарлалт байж болзошгүй цагуудыг алдаа болон шинэчлэлийн тооцоонд оруулахгүй
+    with_fc = [r for r in done if r["p50"] is not None and not r["curt"]]
     summary = {}
     if done:
         pk = max(done, key=lambda r: r["actual"])
         last = done[-1]
         summary.update(actual_peak=pk["actual"], actual_peak_label=pk["label"],
                        last_label=last["label"], last_actual=last["actual"], last_p50=last["p50"])
+    n_curt = sum(1 for r in hours if r["curt"])
+    if n_curt:
+        summary["curtailed_hours"] = n_curt
     if not fc.empty:
         fpk = max((r for r in hours if r["p50"] is not None), key=lambda r: r["p50"])
         summary.update(fc_peak=fpk["p50"], fc_peak_label=fpk["label"], fc_peak_p90=fpk["p90"])

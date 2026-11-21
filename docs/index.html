@@ -87,6 +87,7 @@
       <span><i style="background:var(--series-2)"></i>Таамаг P50</span>
       <span><i class="band" style="background:var(--series-2-band)"></i>P10–P90</span>
       <span><i style="background:var(--series-3)"></i>Шинэчилсэн таамаг (бодит гүйцэтгэлээр)</span>
+      <span><i style="background:var(--critical);width:8px;height:8px;border-radius:50%"></i>Хязгаарлалт байж болзошгүй (бодит &lt; P10 ба чадлын 92%-иас дээш)</span>
     </div>
     <div class="chart big"><canvas id="tdChart"></canvas></div>
   </div>
@@ -181,6 +182,7 @@ function drawToday(td) {
   if (S.fc_peak != null) mini.push(`<div>Таамагласан оргил<b>${fmt(S.fc_peak)} <small>МВт · ${S.fc_peak_label}</small></b></div>`);
   if (S.last_actual != null) mini.push(`<div>Сүүлийн цаг (${S.last_label})<b>${fmt(S.last_actual)} <small>МВт${S.last_p50 != null ? ` · таамаг ${fmt(S.last_p50)}` : ''}</small></b></div>`);
   if (S.now_peak != null) mini.push(`<div>Шинэчилсэн оргил (${S.now_basis_label} байдлаар)<b>${fmt(S.now_peak)} <small>МВт · ${S.now_peak_label} · ${S.now_dev_pct > 0 ? '+' : ''}${fmt(S.now_dev_pct, 1)}%</small></b></div>`);
+  if (S.curtailed_hours) mini.push(`<div>Хязгаарлалт байж болзошгүй<b style="color:var(--critical)">${S.curtailed_hours} <small>цаг</small></b></div>`);
   if (S.mape_so_far != null) mini.push(`<div>Таамгийн алдаа (${S.hours_compared} цаг)<b>${fmt(S.mape_so_far, 1)} <small>%</small></b></div>`);
   document.getElementById('tdMini').innerHTML = mini.join('');
   const H = td.hours, labels = H.map(h => h.label);
@@ -190,7 +192,8 @@ function drawToday(td) {
     { label: 'Таамаг P50', data: H.map(h => h.p50), borderColor: s2, borderWidth: 2, borderDash: [6, 4], pointRadius: 0, tension: .3 },
     { label: 'Шинэчилсэн таамаг', data: H.map(h => h.upd ?? null), borderColor: css('--series-3'), borderWidth: 2, borderDash: [2, 3], pointRadius: 0, tension: .3, spanGaps: false },
     { label: 'Бодит', data: H.map(h => h.actual), borderColor: s1, borderWidth: 2.5, tension: .3, spanGaps: false,
-      pointRadius: H.map(h => h.actual != null && h.label === S.last_label ? 5 : 0), pointBackgroundColor: s1,
+      pointRadius: H.map(h => h.curt ? 6 : (h.actual != null && h.label === S.last_label ? 5 : 0)),
+      pointBackgroundColor: H.map(h => h.curt ? crit : s1),
       pointBorderColor: css('--surface-1'), pointBorderWidth: 2, pointHoverRadius: 5 },
   ];
   if (td.capacity_mw) {
@@ -201,7 +204,7 @@ function drawToday(td) {
   new Chart(document.getElementById('tdChart'), { type: 'line', data: { labels, datasets: ds },
     options: { ...o, plugins: { ...o.plugins, tooltip: { ...o.plugins.tooltip,
       filter: i => i.dataset.label !== 'P10' && i.dataset.label !== 'P90' && i.parsed.y != null,
-      callbacks: { label: c => ` ${c.dataset.label}: ${fmt(c.parsed.y)} МВт` } } } } });
+      callbacks: { label: c => ` ${c.dataset.label}: ${fmt(c.parsed.y)} МВт` + (c.dataset.label === 'Бодит' && H[c.dataIndex].curt ? ' ⚠ хязгаарлалт байж болзошгүй' : '') } } } } });
 }
 Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
 Chart.defaults.font.size = 12;

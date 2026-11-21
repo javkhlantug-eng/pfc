@@ -8,11 +8,14 @@
   засвар c = дундаж(e) × n / (n + K)       — өгөгдөл цөөн үед бага жинтэй (shrinkage)
   шинэ таамаг = түүхий таамаг × (1 + c)
 
+Хязгаарлалт байж болзошгүй цаг/өдрийг (config.likely_curtailed) суралцахаас хасна.
 Загварын ТҮҮХИЙ (засвар хийхээс өмнөх) утгаар алдааг тооцдог тул засвар давхардахгүй.
 Цаг агаарын таамгийн алдаа ч бодит алдаанд багтдаг тул загвар түүнийг ч тооцож сурна.
 """
 import numpy as np
 import pandas as pd
+
+from config import likely_curtailed
 
 WINDOW_DAYS = 14   # сүүлийн хэдэн өдрийн алдааг харах
 SHRINK_K = 7       # n өдрийн өгөгдөлтэй үед жин = n / (n + 7)
@@ -42,6 +45,11 @@ def hourly_correction(log, load, target):
     m = lg.merge(_actuals(load), left_on=["target_date", "hour"], right_on=["date", "hour"])
     if m.empty:
         return {}, 0
+    # Хязгаарлалт байж болзошгүй цагуудыг хасна (тэр нь загварын алдаа биш)
+    curt = [likely_curtailed(a, p) for a, p in zip(m["total_mw"], m["p10"])]
+    m = m[~np.array(curt, dtype=bool)]
+    if m.empty:
+        return {}, 0
     m["e"] = (m["total_mw"] - m["raw"]) / m["total_mw"]
     corr = {}
     for h, g in m.groupby("hour"):
@@ -59,6 +67,8 @@ def peak_correction(peak_log, load, target):
     cnt = act.groupby("date")["hour"].count()
     daily = act.groupby("date")["total_mw"].max()[cnt >= 24]
     m = pl.merge(daily.rename("actual").reset_index(), left_on="target_date", right_on="date")
+    curt = [likely_curtailed(a, p) for a, p in zip(m["actual"], m["p10"])]
+    m = m[~np.array(curt, dtype=bool)]
     if m.empty:
         return 0.0, None, 0
     e = (m["actual"] - m["raw_p50"]) / m["actual"]

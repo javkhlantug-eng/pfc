@@ -39,6 +39,17 @@ FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 # дашбоард дээр таамаг энэ шугамыг давах эрсдэлийг харуулна.
 CAPACITY_MW = 1800
 
+# Хязгаарлалтын мэдээ байхгүй тул өгөгдлөөс таамаглана: бодит ачаалал таамгийн P10-аас доош
+# унасан БӨГӨӨД боломжит чадлын энэ хувиас дээш байсан цагийг «хязгаарлалт байж болзошгүй» гэнэ.
+CURTAIL_FRAC = 0.92
+
+
+def likely_curtailed(actual, p10):
+    """Хязгаарлалт байж болзошгүй эсэх (бодит ачаалал чадалд ойр, таамгаас огцом бага)."""
+    if CAPACITY_MW is None or actual is None or p10 is None:
+        return False
+    return actual < p10 and actual >= CURTAIL_FRAC * CAPACITY_MW
+
 LOAD_COLS = ["thermal", "wind", "solar", "hydro", "battery", "import", "zes_oyu"]
 
 
