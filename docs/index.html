@@ -12,7 +12,7 @@
     --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #8a8984;
     --grid: #ecebe7;
     --series-1: #2a78d6; --series-1-band: rgba(42,120,214,.16);
-    --series-2: #eb6834; --series-2-band: rgba(235,104,52,.14); --series-3: #7a5bd6;
+    --series-2: #eb6834; --series-2-band: rgba(235,104,52,.14); --series-3: #7a5bd6; --yr-1: #9aa4b2; --yr-2: #2a78d6; --yr-3: #d9480f;
     --critical: #c62828;
   }
   @media (prefers-color-scheme: dark) {
@@ -22,7 +22,7 @@
       --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e88;
       --grid: #2a2a28;
       --series-1: #3987e5; --series-1-band: rgba(57,135,229,.22);
-      --series-2: #d95926; --series-2-band: rgba(217,89,38,.20); --series-3: #a48cf0;
+      --series-2: #d95926; --series-2-band: rgba(217,89,38,.20); --series-3: #a48cf0; --yr-1: #8a94a3; --yr-2: #3987e5; --yr-3: #f0662c;
       --critical: #ef6b6b;
     }
   }
@@ -116,7 +116,8 @@
   <div class="grid2">
     <div class="card">
       <h2>Өдрийн оргил ачаалал ба дундаж температур</h2>
-      <p>Бүх түүх — нэг цэг нэг өдөр</p>
+      <p>Нэг цэг нэг өдөр · шугам — тухайн оны дундаж хамаарал (квадрат регресс)</p>
+      <div class="legend" id="scLegend"></div>
       <div class="chart"><canvas id="scatter"></canvas></div>
     </div>
     <div class="card">
@@ -262,15 +263,42 @@ Chart.defaults.font.size = 12;
         plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip, callbacks: { label: c => ` ${c.dataset.label}: ${fmt(c.parsed.y)} МВт` } } } }) });
   }
 
-  // Хамаарал
+  // Хамаарал — он бүрийн цэгүүд ба дундаж хамаарлын шугам
   if (daily?.length) {
-    const pts = daily.filter(d => d.tmean != null).map(d => ({ x: d.tmean, y: d.peak, d: d.date }));
-    new Chart(document.getElementById('scatter'), { type: 'scatter',
-      data: { datasets: [{ data: pts, backgroundColor: s1 + '99', borderColor: css('--surface-1'), borderWidth: 1, pointRadius: 4, pointHoverRadius: 6 }] },
+    const YC = { 2024: css('--yr-1'), 2025: css('--yr-2'), 2026: css('--yr-3') };
+    const colorOf = y => YC[y] || css('--text-muted');
+    // y = a + b·t + c·t² — хамгийн бага квадратын арга (3×3 тэгшитгэл)
+    const quadFit = P => {
+      const S = Array(5).fill(0), T = Array(3).fill(0);
+      for (const { x, y } of P) { let p = 1; for (let k = 0; k < 5; k++) { S[k] += p; if (k < 3) T[k] += p * y; p *= x; } }
+      const A = [[S[0], S[1], S[2], T[0]], [S[1], S[2], S[3], T[1]], [S[2], S[3], S[4], T[2]]];
+      for (let i = 0; i < 3; i++) { for (let j = i + 1; j < 3; j++) { const f = A[j][i] / A[i][i]; for (let k = i; k < 4; k++) A[j][k] -= f * A[i][k]; } }
+      const c = [0, 0, 0]; for (let i = 2; i >= 0; i--) { let v = A[i][3]; for (let k = i + 1; k < 3; k++) v -= A[i][k] * c[k]; c[i] = v / A[i][i]; }
+      return t => c[0] + c[1] * t + c[2] * t * t;
+    };
+    const byYear = {};
+    daily.filter(d => d.tmean != null).forEach(d => {
+      const y = d.date.slice(0, 4); (byYear[y] = byYear[y] || []).push({ x: d.tmean, y: d.peak, d: d.date });
+    });
+    const years = Object.keys(byYear).sort();
+    const sets = [], legend = [];
+    years.forEach(y => {
+      const P = byYear[y], col = colorOf(y);
+      sets.push({ label: y, data: P, backgroundColor: col + '55', borderColor: 'transparent', pointRadius: 3, pointHoverRadius: 5, order: 2 });
+      if (P.length >= 30) {
+        const f = quadFit(P), xs = P.map(p => p.x), lo = Math.min(...xs), hi = Math.max(...xs), line = [];
+        for (let t = lo; t <= hi + 1e-9; t += (hi - lo) / 40) line.push({ x: t, y: f(t), fit: true });
+        sets.push({ label: y + ' дундаж', data: line, showLine: true, borderColor: col, borderWidth: 3, pointRadius: 0, pointHoverRadius: 0, tension: .2, order: 1 });
+      }
+      legend.push(`<span><i style="background:${col}"></i>${y} (${P.length} өдөр)</span>`);
+    });
+    document.getElementById('scLegend').innerHTML = legend.join('');
+    new Chart(document.getElementById('scatter'), { type: 'scatter', data: { datasets: sets },
       options: baseOpts({ interaction: { mode: 'nearest', intersect: true },
         scales: { x: { ...baseOpts().scales.x, title: { display: true, text: 'Өдрийн дундаж температур, °C', color: css('--text-secondary') } },
                   y: { ...baseOpts().scales.y, title: { display: true, text: 'Оргил, МВт', color: css('--text-secondary') } } },
         plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip,
+          filter: i => !i.raw.fit,
           callbacks: { title: i => i[0].raw.d, label: c => ` ${fmt(c.raw.y)} МВт · ${fmt(c.raw.x, 1)} °C` } } } }) });
   }
 
