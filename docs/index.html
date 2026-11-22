@@ -138,11 +138,13 @@
     <div class="legend">
       <span><i style="background:var(--series-1)"></i>Бодит</span>
       <span><i style="background:var(--series-2)"></i>Таамаг P50</span>
-      <span><i class="band" style="background:var(--day-shade);border:1px solid var(--border)"></i>Нартай цаг (Улаанбаатар, нар мандахаас жаргах хүртэл)</span>
+      <span><i class="band" style="background:var(--day-shade);border:1px solid var(--border)"></i>Нартай цаг (УБ)</span>
+      <span><i style="background:var(--text-muted)"></i>Температур, °C (УБ)</span>
+      <span>Нар: <i class="band" style="background:rgba(245,190,40,.45);margin:0 2px 0 4px"></i>цэлмэг <i class="band" style="background:rgba(245,190,40,.08);border:1px solid var(--border);margin:0 2px 0 6px"></i>үүлтэй</span>
+      <span id="windKey">Салхи: <i class="band" style="background:rgba(42,120,214,.1);margin:0 2px 0 4px"></i>сул <i class="band" style="background:rgba(42,120,214,.6);margin:0 2px 0 6px"></i>хүчтэй</span>
     </div>
-    <div class="chart"><canvas id="recentChart"></canvas></div>
-    <h2 style="margin-top:10px;font-size:13px;color:var(--text-secondary);font-weight:500">Температур, °C (Улаанбаатар) · шар сүүдэр — <span style="background:rgba(245,190,40,.4);padding:0 4px">цэлмэг</span> → <span style="background:rgba(245,190,40,.07);padding:0 4px">үүлтэй</span><span id="windKey"> · доод тууз — салхи <span style="background:rgba(42,120,214,.08);padding:0 4px">сул</span> → <span style="background:rgba(42,120,214,.6);color:#fff;padding:0 4px">хүчтэй</span></span></h2>
-    <div class="chart" style="height:120px"><canvas id="recentTemp"></canvas></div>
+    <div class="chart" style="height:260px"><canvas id="recentChart"></canvas></div>
+    <div class="chart" style="height:120px;margin-top:-2px"><canvas id="recentTemp"></canvas></div>
   </div>
 
   <div class="grid2">
@@ -354,7 +356,7 @@ Chart.defaults.font.size = 12;
       data: { labels: rl, datasets: [
         { label: 'Бодит', data: recent.map(r => r.actual), borderColor: s1, borderWidth: 2, pointRadius: 0, tension: .2 },
         { label: 'Таамаг', data: recent.map(r => r.forecast), borderColor: s2, borderWidth: 2, pointRadius: 0, tension: .2, spanGaps: false } ] },
-      options: baseOpts({ scales: { x: xTicks, y: yFixed },
+      options: baseOpts({ scales: { x: { ...xTicks, ticks: { ...xTicks.ticks, display: false } }, y: yFixed },
         plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip, callbacks: {
           title: i => i[0].label + (dayMask[i[0].dataIndex] ? ' ☀' : ''),
           label: c => ` ${c.dataset.label}: ${fmt(c.parsed.y)} МВт`,
