@@ -99,6 +99,7 @@ def main():
     if summary.get("now_peak") is not None:
         log_nc(today, summary, now)
     write_history(load)
+    write_recent(load)
 
     out = {"date": today, "updated_at": now.isoformat(timespec="minutes"),
            "forecast_issued_at": issued, "capacity_mw": CAPACITY_MW,
@@ -142,6 +143,36 @@ def write_history(load):
         out.append({"date": d, "fc_peak": None if fc.empty else float(fc.iloc[0]), "actual": actual,
                     "cells": {r.basis: {"mw": float(r.now_peak), "label": r.now_peak_label} for r in g.itertuples()}})
     (DOCS_DATA / "nowcast_history.json").write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+
+
+def write_recent(load, days=7):
+    """Сүүлийн 7 хоногийн бодит, таамаг, температур, үүлшил → docs/data/recent.json (цаг тутам)."""
+    w_p, wf_p, log_p = DATA / "weather_hourly.csv", DATA / "weather_forecast.csv", DATA / "forecast_log.csv"
+    if not w_p.exists():
+        return
+    w = pd.read_csv(w_p)
+    if wf_p.exists():
+        w = pd.concat([w, pd.read_csv(wf_p)]).drop_duplicates("time", keep="first")
+    w["time"] = pd.to_datetime(w["time"])
+    w = w.set_index("time")
+    d = load.copy()
+    d["dt"] = pd.to_datetime(d["date"])
+    d = d[d["dt"] >= d["dt"].max() - pd.Timedelta(days=days - 1)]
+    d["ts"] = d["dt"] + pd.to_timedelta(d["hour"], unit="h")
+    tcol = w["temperature_2m"].reindex(d["ts"]).values
+    ccol = w["cloud_cover"].reindex(d["ts"].dt.floor("h")).values if "cloud_cover" in w.columns else [None] * len(d)
+    fc = {}
+    if log_p.exists():
+        lg = pd.read_csv(log_p, dtype={"target_date": str})
+        fc = {(r.target_date, int(r.hour)): float(r.p50) for r in lg.itertuples()}
+    out = []
+    for r, t, c in zip(d.itertuples(), tcol, ccol):
+        out.append({"date": r.date, "hour": int(r.hour), "actual": float(r.total_mw),
+                    "forecast": fc.get((r.date, int(r.hour))),
+                    "temp": None if t is None or pd.isna(t) else round(float(t), 1),
+                    "cloud": None if c is None or pd.isna(c) else int(c)})
+    out.sort(key=lambda x: (x["date"], x["hour"]))
+    (DOCS_DATA / "recent.json").write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
 
 
 if __name__ == "__main__":

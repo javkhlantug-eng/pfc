@@ -130,7 +130,7 @@
       <span><i class="band" style="background:var(--day-shade);border:1px solid var(--border)"></i>Нартай цаг (Улаанбаатар, нар мандахаас жаргах хүртэл)</span>
     </div>
     <div class="chart"><canvas id="recentChart"></canvas></div>
-    <h2 style="margin-top:10px;font-size:13px;color:var(--text-secondary);font-weight:500">Температур, °C (Улаанбаатар)</h2>
+    <h2 style="margin-top:10px;font-size:13px;color:var(--text-secondary);font-weight:500">Температур, °C (Улаанбаатар) · шар сүүдэр — <span style="background:rgba(245,190,40,.4);padding:0 4px">цэлмэг</span> → <span style="background:rgba(245,190,40,.07);padding:0 4px">үүлтэй</span></h2>
     <div class="chart" style="height:110px"><canvas id="recentTemp"></canvas></div>
   </div>
 
@@ -348,10 +348,23 @@ Chart.defaults.font.size = 12;
           title: i => i[0].label + (dayMask[i[0].dataIndex] ? ' ☀' : ''),
           label: c => ` ${c.dataset.label}: ${fmt(c.parsed.y)} МВт`,
           afterBody: i => { const t = recent[i[0].dataIndex].temp; return t != null ? ` Температур: ${fmt(t, 1)} °C` : ''; } } } } }) });
-    new Chart(document.getElementById('recentTemp'), { type: 'line', plugins: [dayShade],
+    // Доод самбар: нартай цаг бүрийг үүлшлийн дагуу тод (цэлмэг) / бүдэг (үүлтэй) шараар
+    const sunShade = { id: 'sunShade', beforeDatasetsDraw(c) {
+      const x = c.scales.x, { top, bottom } = c.chartArea, g = c.ctx, step = x.getPixelForValue(1) - x.getPixelForValue(0);
+      g.save();
+      recent.forEach((r, i) => {
+        if (!dayMask[i]) return;
+        const clear = r.cloud == null ? 0.5 : 1 - r.cloud / 100;
+        g.fillStyle = `rgba(245,190,40,${(0.05 + 0.4 * clear).toFixed(3)})`;
+        g.fillRect(x.getPixelForValue(i) - step / 2, top, step + 0.5, bottom - top);
+      });
+      g.restore();
+    } };
+    new Chart(document.getElementById('recentTemp'), { type: 'line', plugins: [sunShade],
       data: { labels: rl, datasets: [{ label: 'Температур', data: recent.map(r => r.temp), borderColor: css('--text-muted'), borderWidth: 1.5, pointRadius: 0, tension: .3 }] },
       options: baseOpts({ scales: { x: xTicks, y: yFixed },
-        plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip, callbacks: { label: c => ` ${fmt(c.parsed.y, 1)} °C` } } } }) });
+        plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip, callbacks: {
+          label: c => ` ${fmt(c.parsed.y, 1)} °C` + (recent[c.dataIndex].cloud != null ? ` · үүлшил ${recent[c.dataIndex].cloud}%` : '') } } } }) });
   }
 
   // Хамаарал — жил бүрийн цэгүүд ба дундаж хамаарлын шугам
