@@ -140,8 +140,20 @@ def write_history(load):
             actual = {"mw": float(a.loc[i, "total_mw"]), "label": "{:02d}:00".format(int(a.loc[i, "hour"])),
                       "complete": bool(len(a) >= 24)}
         fc = g["fc_peak"].dropna()
-        out.append({"date": d, "fc_peak": None if fc.empty else float(fc.iloc[0]), "actual": actual,
-                    "cells": {r.basis: {"mw": float(r.now_peak), "label": r.now_peak_label} for r in g.itertuples()}})
+        # Оргил нь аль хэдийн болсон (оргилын цаг ≤ суурь цаг) мөрүүд таамаг биш, бодит оргилын давталт
+        # тул хүснэгтэд гаргахгүй — тэр утга «Бодит оргил» баганад байгаа. Лог өөрөө хэвээр.
+        def _h(lbl):
+            try:
+                return int(str(lbl)[:2])
+            except ValueError:
+                return None
+        cells = {}
+        for r in g.itertuples():
+            bh, ph = _h(r.basis), _h(r.now_peak_label)
+            if bh is not None and ph is not None and ph <= bh:
+                continue
+            cells[r.basis] = {"mw": float(r.now_peak), "label": r.now_peak_label}
+        out.append({"date": d, "fc_peak": None if fc.empty else float(fc.iloc[0]), "actual": actual, "cells": cells})
     (DOCS_DATA / "nowcast_history.json").write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
 
 
