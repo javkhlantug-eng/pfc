@@ -20,4 +20,6 @@ if [ "$H" = "02" ] || [ "${1:-}" = "--force-forecast" ] || [ "${1:-}" = "--updat
   python3 collect_weather.py && python3 forecast.py
 fi
 
+python3 collect_regions.py || true
+
 python3 today.py
