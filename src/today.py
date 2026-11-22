@@ -161,16 +161,19 @@ def write_recent(load, days=7):
     d["ts"] = d["dt"] + pd.to_timedelta(d["hour"], unit="h")
     tcol = w["temperature_2m"].reindex(d["ts"]).values
     ccol = w["cloud_cover"].reindex(d["ts"].dt.floor("60min")).values if "cloud_cover" in w.columns else [None] * len(d)
+    # Open-Meteo салхины хурдыг км/ц-аар өгдөг → м/с
+    wcol = (w["wind_speed_10m"] / 3.6).reindex(d["ts"]).values if "wind_speed_10m" in w.columns else [None] * len(d)
     fc = {}
     if log_p.exists():
         lg = pd.read_csv(log_p, dtype={"target_date": str})
         fc = {(r.target_date, int(r.hour)): float(r.p50) for r in lg.itertuples()}
     out = []
-    for r, t, c in zip(d.itertuples(), tcol, ccol):
+    for r, t, c, ws in zip(d.itertuples(), tcol, ccol, wcol):
         out.append({"date": r.date, "hour": int(r.hour), "actual": float(r.total_mw),
                     "forecast": fc.get((r.date, int(r.hour))),
                     "temp": None if t is None or pd.isna(t) else round(float(t), 1),
-                    "cloud": None if c is None or pd.isna(c) else int(c)})
+                    "cloud": None if c is None or pd.isna(c) else int(c),
+                    "wind": None if ws is None or pd.isna(ws) else round(float(ws), 1)})
     out.sort(key=lambda x: (x["date"], x["hour"]))
     (DOCS_DATA / "recent.json").write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
 
