@@ -160,7 +160,7 @@ def write_recent(load, days=7):
     d = d[d["dt"] >= d["dt"].max() - pd.Timedelta(days=days - 1)]
     d["ts"] = d["dt"] + pd.to_timedelta(d["hour"], unit="h")
     tcol = w["temperature_2m"].reindex(d["ts"]).values
-    ccol = w["cloud_cover"].reindex(d["ts"].dt.floor("h")).values if "cloud_cover" in w.columns else [None] * len(d)
+    ccol = w["cloud_cover"].reindex(d["ts"].dt.floor("60min")).values if "cloud_cover" in w.columns else [None] * len(d)
     fc = {}
     if log_p.exists():
         lg = pd.read_csv(log_p, dtype={"target_date": str})
