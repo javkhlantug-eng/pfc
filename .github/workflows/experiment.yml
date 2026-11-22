@@ -1,0 +1,26 @@
+name: Туршилт — Дарханы температур
+
+on:
+  workflow_dispatch:
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Харьцуулах (одоогийн өгөгдлийг хуулбарлаж ажиллана, юу ч хадгалахгүй)
+        run: |
+          for W in 0 0.1 0.2; do
+            D=/tmp/exp_$W; mkdir -p $D/data $D/docs; cp data/* $D/data/
+            if [ "$W" != "0" ]; then
+              PFC_DARKHAN_W=$W PFC_DATA=$D/data PFC_DOCS_DATA=$D/docs python src/collect_weather.py --full
+            fi
+            echo "===== Дарханы жин $W ====="
+            PFC_DARKHAN_W=$W PFC_DATA=$D/data PFC_DOCS_DATA=$D/docs python src/forecast.py 2>&1 | grep -E "Шалгалт|оргил:"
+          done

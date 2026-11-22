@@ -27,8 +27,9 @@ REQUEST_DELAY_SEC = 1.0            # сервер рүү ачаалал бага
 # Цаг агаарын цэгүүд. Жин нь нийт ачаалалд оруулах нөлөө.
 # Эхэндээ зөвхөн Улаанбаатар; Дархан, Эрдэнэтийг нэмж туршиж болно.
 LOCATIONS = [
-    {"name": "Улаанбаатар", "lat": 47.92, "lon": 106.92, "weight": 1.0},
-    # {"name": "Дархан", "lat": 49.47, "lon": 105.97, "weight": 0.0},
+    {"name": "Улаанбаатар", "lat": 47.92, "lon": 106.92,
+     "weight": 1.0 - float(os.environ.get("PFC_DARKHAN_W", "0"))},
+    {"name": "Дархан", "lat": 49.47, "lon": 105.97, "weight": float(os.environ.get("PFC_DARKHAN_W", "0"))},
     # {"name": "Эрдэнэт", "lat": 49.03, "lon": 104.08, "weight": 0.0},
 ]
 WEATHER_VARS = ["temperature_2m", "wind_speed_10m", "cloud_cover"]
