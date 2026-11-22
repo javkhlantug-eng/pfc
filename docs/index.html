@@ -12,7 +12,7 @@
     --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #8a8984;
     --grid: #ecebe7;
     --series-1: #2a78d6; --series-1-band: rgba(42,120,214,.16);
-    --series-2: #eb6834; --series-2-band: rgba(235,104,52,.14); --series-3: #7a5bd6; --yr-0: #c9ced6; --yr-1: #8f99a8; --yr-2: #2a78d6; --yr-3: #d9480f;
+    --series-2: #eb6834; --series-2-band: rgba(235,104,52,.14); --series-3: #7a5bd6; --day-shade: rgba(245,190,40,.13); --yr-0: #c9ced6; --yr-1: #8f99a8; --yr-2: #2a78d6; --yr-3: #d9480f;
     --critical: #c62828;
   }
   @media (prefers-color-scheme: dark) {
@@ -22,7 +22,7 @@
       --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e88;
       --grid: #2a2a28;
       --series-1: #3987e5; --series-1-band: rgba(57,135,229,.22);
-      --series-2: #d95926; --series-2-band: rgba(217,89,38,.20); --series-3: #a48cf0; --yr-0: #5c6370; --yr-1: #8a94a3; --yr-2: #3987e5; --yr-3: #f0662c;
+      --series-2: #d95926; --series-2-band: rgba(217,89,38,.20); --series-3: #a48cf0; --day-shade: rgba(245,190,40,.08); --yr-0: #5c6370; --yr-1: #8a94a3; --yr-2: #3987e5; --yr-3: #f0662c;
       --critical: #ef6b6b;
     }
   }
@@ -127,8 +127,11 @@
     <div class="legend">
       <span><i style="background:var(--series-1)"></i>Бодит</span>
       <span><i style="background:var(--series-2)"></i>Таамаг P50</span>
+      <span><i class="band" style="background:var(--day-shade);border:1px solid var(--border)"></i>Нартай цаг (Улаанбаатар, нар мандахаас жаргах хүртэл)</span>
     </div>
     <div class="chart"><canvas id="recentChart"></canvas></div>
+    <h2 style="margin-top:10px;font-size:13px;color:var(--text-secondary);font-weight:500">Температур, °C (Улаанбаатар)</h2>
+    <div class="chart" style="height:110px"><canvas id="recentTemp"></canvas></div>
   </div>
 
   <div class="grid2">
@@ -306,16 +309,49 @@ Chart.defaults.font.size = 12;
     fc.hours.map(h => `<tr><td>${h.label}</td><td>${fmt(h.temp, 1)}</td><td>${fmt(h.p10)}</td><td>${fmt(h.p50)}</td><td>${fmt(h.p90)}</td>` +
       (SUP ? `<td>${fmt(sh(h.hour).wind_fc)}</td><td>${fmt(sh(h.hour).solar_fc)}</td><td>${fmt(sh(h.hour).supply)}</td><td>${fmt(sh(h.hour).supply - h.p90)}</td>` : '') + '</tr>').join('') + '</table>';
 
-  // Сүүлийн 14 хоног
+  // Сүүлийн 7 хоног — бодит/таамаг, доор нь температур; нартай цагийг шараар сүүдэрлэнэ
   if (recent?.length) {
     const rl = recent.map(r => r.date.slice(5) + ' ' + String(r.hour).padStart(2, '0') + ':00');
-    new Chart(document.getElementById('recentChart'), { type: 'line',
+    // Нар мандах/жаргах цаг (NOAA-ийн хялбаршуулсан томьёо), Улаанбаатар 47.92°N 106.92°E, UTC+8
+    const sunTimes = ds => {
+      const d = new Date(ds + 'T00:00:00Z'), n = Math.floor((d - Date.UTC(d.getUTCFullYear(), 0, 0)) / 864e5);
+      const lat = 47.92 * Math.PI / 180, lon = 106.92, g = 2 * Math.PI / 365 * (n - 1);
+      const eq = 229.18 * (0.000075 + 0.001868 * Math.cos(g) - 0.032077 * Math.sin(g) - 0.014615 * Math.cos(2 * g) - 0.040849 * Math.sin(2 * g));
+      const dec = 0.006918 - 0.399912 * Math.cos(g) + 0.070257 * Math.sin(g) - 0.006758 * Math.cos(2 * g) + 0.000907 * Math.sin(2 * g) - 0.002697 * Math.cos(3 * g) + 0.00148 * Math.sin(3 * g);
+      const ha = Math.acos(Math.cos(90.833 * Math.PI / 180) / (Math.cos(lat) * Math.cos(dec)) - Math.tan(lat) * Math.tan(dec)) * 180 / Math.PI;
+      const noon = 720 - 4 * lon - eq + 480;   // орон нутгийн минут
+      return [(noon - 4 * ha) / 60, (noon + 4 * ha) / 60];
+    };
+    const sunCache = {};
+    // Цагийн ачаалал «hour» нь тухайн цагийн төгсгөл (19 = 18:00–19:00) — цагийн дунд хэсгээр шалгана
+    const isDay = r => { const [a, b] = (sunCache[r.date] = sunCache[r.date] || sunTimes(r.date)); const mid = r.hour - 0.5; return mid >= a && mid <= b; };
+    const dayMask = recent.map(isDay);
+    const dayShade = { id: 'dayShade', beforeDatasetsDraw(c) {
+      const x = c.scales.x, { top, bottom } = c.chartArea, g = c.ctx, step = x.getPixelForValue(1) - x.getPixelForValue(0);
+      g.save(); g.fillStyle = css('--day-shade');
+      for (let i = 0; i < dayMask.length; i++) {
+        if (!dayMask[i]) continue; let j = i; while (j + 1 < dayMask.length && dayMask[j + 1]) j++;
+        g.fillRect(x.getPixelForValue(i) - step / 2, top, (j - i + 1) * step, bottom - top); i = j;
+      }
+      g.restore();
+    } };
+    // Хоёр графикийн x тэнхлэгийг тэгшлэхийн тулд y тэнхлэгийн өргөнийг тогтмол болгоно
+    const yFixed = { ...baseOpts().scales.y, afterFit: sc => { sc.width = 52; } };
+    const xTicks = { ...baseOpts().scales.x, ticks: { ...baseOpts().scales.x.ticks, autoSkip: false,
+      callback: function (v) { const l = this.getLabelForValue(v); return l.endsWith(' 12:00') ? l.slice(0, 5) : null; } } };
+    new Chart(document.getElementById('recentChart'), { type: 'line', plugins: [dayShade],
       data: { labels: rl, datasets: [
         { label: 'Бодит', data: recent.map(r => r.actual), borderColor: s1, borderWidth: 2, pointRadius: 0, tension: .2 },
         { label: 'Таамаг', data: recent.map(r => r.forecast), borderColor: s2, borderWidth: 2, pointRadius: 0, tension: .2, spanGaps: false } ] },
-      options: baseOpts({ scales: { ...baseOpts().scales, x: { ...baseOpts().scales.x, ticks: { ...baseOpts().scales.x.ticks, autoSkip: false,
-        callback: function (v) { const l = this.getLabelForValue(v); return l.endsWith(' 12:00') ? l.slice(0, 5) : null; } } } },
-        plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip, callbacks: { label: c => ` ${c.dataset.label}: ${fmt(c.parsed.y)} МВт` } } } }) });
+      options: baseOpts({ scales: { x: xTicks, y: yFixed },
+        plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip, callbacks: {
+          title: i => i[0].label + (dayMask[i[0].dataIndex] ? ' ☀' : ''),
+          label: c => ` ${c.dataset.label}: ${fmt(c.parsed.y)} МВт`,
+          afterBody: i => { const t = recent[i[0].dataIndex].temp; return t != null ? ` Температур: ${fmt(t, 1)} °C` : ''; } } } } }) });
+    new Chart(document.getElementById('recentTemp'), { type: 'line', plugins: [dayShade],
+      data: { labels: rl, datasets: [{ label: 'Температур', data: recent.map(r => r.temp), borderColor: css('--text-muted'), borderWidth: 1.5, pointRadius: 0, tension: .3 }] },
+      options: baseOpts({ scales: { x: xTicks, y: yFixed },
+        plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip, callbacks: { label: c => ` ${fmt(c.parsed.y, 1)} °C` } } } }) });
   }
 
   // Хамаарал — жил бүрийн цэгүүд ба дундаж хамаарлын шугам
