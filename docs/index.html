@@ -130,10 +130,8 @@
       <span><i class="band" style="background:var(--day-shade);border:1px solid var(--border)"></i>Нартай цаг (Улаанбаатар, нар мандахаас жаргах хүртэл)</span>
     </div>
     <div class="chart"><canvas id="recentChart"></canvas></div>
-    <h2 style="margin-top:10px;font-size:13px;color:var(--text-secondary);font-weight:500">Температур, °C (Улаанбаатар) · шар сүүдэр — <span style="background:rgba(245,190,40,.4);padding:0 4px">цэлмэг</span> → <span style="background:rgba(245,190,40,.07);padding:0 4px">үүлтэй</span></h2>
-    <div class="chart" style="height:110px"><canvas id="recentTemp"></canvas></div>
-    <h2 style="margin-top:8px;font-size:13px;color:var(--text-secondary);font-weight:500">Салхины хурд, м/с (Улаанбаатар, 10 м өндөрт)</h2>
-    <div class="chart" style="height:90px"><canvas id="recentWind"></canvas></div>
+    <h2 style="margin-top:10px;font-size:13px;color:var(--text-secondary);font-weight:500">Температур, °C (Улаанбаатар) · шар сүүдэр — <span style="background:rgba(245,190,40,.4);padding:0 4px">цэлмэг</span> → <span style="background:rgba(245,190,40,.07);padding:0 4px">үүлтэй</span><span id="windKey"> · доод тууз — салхи <span style="background:rgba(42,120,214,.08);padding:0 4px">сул</span> → <span style="background:rgba(42,120,214,.6);color:#fff;padding:0 4px">хүчтэй</span></span></h2>
+    <div class="chart" style="height:120px"><canvas id="recentTemp"></canvas></div>
   </div>
 
   <div class="grid2">
@@ -362,21 +360,27 @@ Chart.defaults.font.size = 12;
       });
       g.restore();
     } };
-    new Chart(document.getElementById('recentTemp'), { type: 'line', plugins: [sunShade],
+    // Доод хөвөөний тууз: УБ-ын салхины хурд (10 м, м/с) — хүчтэй байх тусам тод цэнхэр
+    const hasWind = recent.some(r => r.wind != null);
+    const windMax = Math.max(6, ...recent.map(r => r.wind || 0));
+    const windStrip = { id: 'windStrip', beforeDatasetsDraw(c) {
+      if (!hasWind) return;
+      const x = c.scales.x, { bottom } = c.chartArea, g = c.ctx, step = x.getPixelForValue(1) - x.getPixelForValue(0), h = 10;
+      g.save();
+      recent.forEach((r, i) => {
+        if (r.wind == null) return;
+        g.fillStyle = `rgba(42,120,214,${(0.04 + 0.6 * Math.min(1, r.wind / windMax)).toFixed(3)})`;
+        g.fillRect(x.getPixelForValue(i) - step / 2, bottom - h, step + 0.5, h);
+      });
+      g.restore();
+    } };
+    if (!hasWind) document.getElementById('windKey').style.display = 'none';
+    new Chart(document.getElementById('recentTemp'), { type: 'line', plugins: [sunShade, windStrip],
       data: { labels: rl, datasets: [{ label: 'Температур', data: recent.map(r => r.temp), borderColor: css('--text-muted'), borderWidth: 1.5, pointRadius: 0, tension: .3 }] },
       options: baseOpts({ scales: { x: xTicks, y: yFixed },
         plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip, callbacks: {
-          label: c => ` ${fmt(c.parsed.y, 1)} °C` + (recent[c.dataIndex].cloud != null ? ` · үүлшил ${recent[c.dataIndex].cloud}%` : '') } } } }) });
-    if (recent.some(r => r.wind != null)) {
-      new Chart(document.getElementById('recentWind'), { type: 'line', plugins: [dayShade],
-        data: { labels: rl, datasets: [{ label: 'Салхи', data: recent.map(r => r.wind), borderColor: 'rgba(42,120,214,.45)', backgroundColor: 'rgba(42,120,214,.12)',
-                                         fill: 'origin', borderWidth: 1.2, pointRadius: 0, tension: .3 }] },
-        options: baseOpts({ scales: { x: xTicks, y: { ...yFixed, min: 0 } },
-          plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip, callbacks: { label: c => ` ${fmt(c.parsed.y, 1)} м/с` } } } }) });
-    } else {
-      document.getElementById('recentWind').closest('.chart').previousElementSibling.style.display = 'none';
-      document.getElementById('recentWind').closest('.chart').style.display = 'none';
-    }
+          label: c => ` ${fmt(c.parsed.y, 1)} °C` + (recent[c.dataIndex].cloud != null ? ` · үүлшил ${recent[c.dataIndex].cloud}%` : '')
+            + (recent[c.dataIndex].wind != null ? ` · салхи ${fmt(recent[c.dataIndex].wind, 1)} м/с` : '') } } } }) });
   }
 
   // Хамаарал — жил бүрийн цэгүүд ба дундаж хамаарлын шугам
