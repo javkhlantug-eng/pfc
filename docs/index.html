@@ -30,15 +30,13 @@
   body { margin: 0; font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; }
   .viz-root { background: var(--surface-0); color: var(--text-primary); min-height: 100vh; padding: 24px; }
   .wrap { max-width: 1180px; margin: 0 auto; }
-  /* Баясалтөгсийн брэнд зурвас */
-  .brandbar { background: #0a1a3c; color: #fff; }
-  .brandbar::after { content: ""; display: block; height: 3px; background: linear-gradient(90deg, #2f3f80 0 50%, #f47b20 50% 85%, #f2b01e 85%); }
-  .brandbar .in { max-width: 1228px; margin: 0 auto; padding: 0 24px; height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  .brandbar .nm { font-size: 13px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
-  .brandbar .nm b { color: #f47b20; font-weight: 650; }
-  .brandbar a.home { color: #fff; text-decoration: none; font-size: 13px; font-weight: 550; padding: 5px 12px; border-radius: 6px; background: #f47b20; display: inline-flex; align-items: center; gap: 6px; }
-  .brandbar a.home:hover { background: #e06a10; }
-  .brandbar a.home:focus-visible { outline: 2px solid #f2b01e; outline-offset: 2px; }
+  /* Баясалтөгсийн логотой дээд зурвас (сайтын толгойтой ижил) */
+  .brandbar { background: #fff; border-bottom: 1px solid #e3e7ef; }
+  .brandbar .in { max-width: 1228px; margin: 0 auto; padding: 0 24px; height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .brandbar .logo img { height: 30px; width: auto; display: block; }
+  .brandbar a.home { color: #0a1a3c; text-decoration: none; font-size: 13px; font-weight: 550; padding: 6px 12px; border: 1px solid #c9d3ea; border-radius: 6px; white-space: nowrap; }
+  .brandbar a.home:hover { background: #f5f7fb; }
+  .brandbar a.home:focus-visible { outline: 2px solid #0a1a3c; outline-offset: 2px; }
   header { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
   h1 { font-size: 22px; margin: 0; font-weight: 650; }
   .sub { color: var(--text-secondary); font-size: 13px; }
@@ -88,7 +86,7 @@
 </head>
 <body>
 <div class="brandbar"><div class="in">
-  <span class="nm">Баясал<b>төгс</b></span>
+  <a class="logo" href="https://bayasaltugs.com/" target="_top"><img src="https://bayasaltugs.com/assets/logo.png" alt="Баясалтөгс"></a>
   <a class="home" href="https://bayasaltugs.com/" target="_top">← Нүүр хуудас</a>
 </div></div>
 <div class="viz-root">
