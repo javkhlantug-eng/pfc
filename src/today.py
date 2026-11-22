@@ -123,6 +123,9 @@ def log_nc(today, S, now):
     log.drop_duplicates(["date", "basis"], keep="last").sort_values(["date", "basis"]).to_csv(p, index=False)
 
 
+NC_FIRST_HOUR = 9   # «Оргилын таамаг цаг тутам…» хүснэгтэд 09:00-өөс өмнөх шинэчлэлийг гаргахгүй
+
+
 def write_history(load):
     """Сүүлийн 14 өдрийн шинэчлэлийн түүхийг бодит оргилтой хамт docs/data/nowcast_history.json болгоно."""
     p = DATA / NC_LOG
@@ -151,6 +154,8 @@ def write_history(load):
         for r in g.itertuples():
             bh, ph = _h(r.basis), _h(r.now_peak_label)
             if bh is not None and ph is not None and ph <= bh:
+                continue
+            if bh is not None and bh < NC_FIRST_HOUR:   # өглөөний цөөн цагийн гүйцэтгэлээр шинэчлэх нь найдваргүй
                 continue
             cells[r.basis] = {"mw": float(r.now_peak), "label": r.now_peak_label}
         out.append({"date": d, "fc_peak": None if fc.empty else float(fc.iloc[0]), "actual": actual, "cells": cells})
