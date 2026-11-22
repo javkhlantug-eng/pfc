@@ -1,0 +1,33 @@
+name: Туршилт — температурын таамгийн алдаа
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Загвар бүрийн өмнөх таамгийг татах
+        run: cd src && python exp_tempfc.py
+      - name: Тусдаа салбарт хадгалах (main-д хүрэхгүй)
+        run: |
+          mkdir -p /tmp/out && cp data/exp/*.csv /tmp/out/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan exp-tempfc
+          git rm -rq --cached .
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp /tmp/out/*.csv .
+          git add *.csv
+          git commit -qm "Temperature forecast experiment data"
+          git push -f origin exp-tempfc
