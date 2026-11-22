@@ -138,9 +138,8 @@
     <div class="legend">
       <span><i style="background:var(--series-1)"></i>Бодит</span>
       <span><i style="background:var(--series-2)"></i>Таамаг P50</span>
-      <span><i class="band" style="background:var(--day-shade);border:1px solid var(--border)"></i>Нартай цаг (УБ)</span>
       <span><i style="background:var(--text-muted)"></i>Температур, °C (УБ)</span>
-      <span>Нар: <i class="band" style="background:rgba(245,190,40,.45);margin:0 2px 0 4px"></i>цэлмэг <i class="band" style="background:rgba(245,190,40,.08);border:1px solid var(--border);margin:0 2px 0 6px"></i>үүлтэй</span>
+      <span>Нартай цаг (УБ): <i class="band" style="background:rgba(245,190,40,.45);margin:0 2px 0 4px"></i>цэлмэг <i class="band" style="background:rgba(245,190,40,.08);border:1px solid var(--border);margin:0 2px 0 6px"></i>үүлтэй</span>
       <span id="windKey">Салхи: <i class="band" style="background:rgba(42,120,214,.1);margin:0 2px 0 4px"></i>сул <i class="band" style="background:rgba(42,120,214,.6);margin:0 2px 0 6px"></i>хүчтэй</span>
     </div>
     <div class="chart" style="height:260px"><canvas id="recentChart"></canvas></div>
@@ -352,16 +351,7 @@ Chart.defaults.font.size = 12;
     const yFixed = { ...baseOpts().scales.y, afterFit: sc => { sc.width = 52; } };
     const xTicks = { ...baseOpts().scales.x, ticks: { ...baseOpts().scales.x.ticks, autoSkip: false,
       callback: function (v) { const l = this.getLabelForValue(v); return l.endsWith(' 12:00') ? l.slice(0, 5) : null; } } };
-    new Chart(document.getElementById('recentChart'), { type: 'line', plugins: [dayShade],
-      data: { labels: rl, datasets: [
-        { label: 'Бодит', data: recent.map(r => r.actual), borderColor: s1, borderWidth: 2, pointRadius: 0, tension: .2 },
-        { label: 'Таамаг', data: recent.map(r => r.forecast), borderColor: s2, borderWidth: 2, pointRadius: 0, tension: .2, spanGaps: false } ] },
-      options: baseOpts({ scales: { x: { ...xTicks, ticks: { ...xTicks.ticks, display: false } }, y: yFixed },
-        plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip, callbacks: {
-          title: i => i[0].label + (dayMask[i[0].dataIndex] ? ' ☀' : ''),
-          label: c => ` ${c.dataset.label}: ${fmt(c.parsed.y)} МВт`,
-          afterBody: i => { const t = recent[i[0].dataIndex].temp; return t != null ? ` Температур: ${fmt(t, 1)} °C` : ''; } } } } }) });
-    // Доод самбар: нартай цаг бүрийг үүлшлийн дагуу тод (цэлмэг) / бүдэг (үүлтэй) шараар
+    // Хоёр самбарт: нартай цаг бүрийг үүлшлийн дагуу тод (цэлмэг) / бүдэг (үүлтэй) шараар
     const sunShade = { id: 'sunShade', beforeDatasetsDraw(c) {
       const x = c.scales.x, { top, bottom } = c.chartArea, g = c.ctx, step = x.getPixelForValue(1) - x.getPixelForValue(0);
       g.save();
@@ -373,6 +363,15 @@ Chart.defaults.font.size = 12;
       });
       g.restore();
     } };
+    new Chart(document.getElementById('recentChart'), { type: 'line', plugins: [sunShade],
+      data: { labels: rl, datasets: [
+        { label: 'Бодит', data: recent.map(r => r.actual), borderColor: s1, borderWidth: 2, pointRadius: 0, tension: .2 },
+        { label: 'Таамаг', data: recent.map(r => r.forecast), borderColor: s2, borderWidth: 2, pointRadius: 0, tension: .2, spanGaps: false } ] },
+      options: baseOpts({ scales: { x: { ...xTicks, ticks: { ...xTicks.ticks, display: false } }, y: yFixed },
+        plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip, callbacks: {
+          title: i => i[0].label + (dayMask[i[0].dataIndex] ? ' ☀' : ''),
+          label: c => ` ${c.dataset.label}: ${fmt(c.parsed.y)} МВт`,
+          afterBody: i => { const t = recent[i[0].dataIndex].temp; return t != null ? ` Температур: ${fmt(t, 1)} °C` : ''; } } } } }) });
     // Доод хөвөөний тууз: УБ-ын салхины хурд (10 м, м/с) — хүчтэй байх тусам тод цэнхэр
     const hasWind = recent.some(r => r.wind != null);
     const windMax = Math.max(6, ...recent.map(r => r.wind || 0));
