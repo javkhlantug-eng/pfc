@@ -15,6 +15,7 @@ import pandas as pd
 HALF_LIFE_H = 8
 
 from config import DATA, DOCS_DATA, CAPACITY_MW, ub_now, norm_hours, likely_curtailed
+from supply import stress_flags
 
 
 def main():
@@ -23,6 +24,8 @@ def main():
 
     load = norm_hours(pd.read_csv(DATA / "load_hourly.csv", dtype={"date": str}))
     act = load[load["date"] == today].set_index("hour")["total_mw"]
+    st = load.assign(stressed=stress_flags(load).values)
+    stressed_h = set(st.loc[(st["date"] == today) & st["stressed"], "hour"])
 
     log_p = DATA / "forecast_log.csv"
     fc = pd.DataFrame()
@@ -37,10 +40,13 @@ def main():
         row = {"hour": h, "label": f"{h:02d}:00", "actual": None if a is None or pd.isna(a) else float(a)}
         for k in ("p10", "p50", "p90"):
             row[k] = None if fc.empty or h not in fc.index else float(fc.loc[h, k])
+        if not fc.empty and "supply" in fc.columns and h in fc.index and pd.notna(fc.loc[h, "supply"]):
+            row["supply"] = float(fc.loc[h, "supply"])
         hours.append(row)
 
     for r in hours:
-        r["curt"] = bool(likely_curtailed(r["actual"], r["p10"]))
+        # Импорт хязгаартаа + дулааны станц дээд хэмжээндээ, ЭСВЭЛ бодит < P10 чадалд ойр үед
+        r["curt"] = bool(r["hour"] in stressed_h or likely_curtailed(r["actual"], r["p10"]))
     done = [r for r in hours if r["actual"] is not None]
     # Хязгаарлалт байж болзошгүй цагуудыг алдаа болон шинэчлэлийн тооцоонд оруулахгүй
     with_fc = [r for r in done if r["p50"] is not None and not r["curt"]]

@@ -231,8 +231,9 @@ function drawToday(td) {
       pointBackgroundColor: H.map(h => h.curt ? crit : s1),
       pointBorderColor: css('--surface-1'), pointBorderWidth: 2, pointHoverRadius: 5 },
   ];
-  if (td.capacity_mw) {
-    ds.push({ label: 'Боломжит чадал', data: labels.map(() => td.capacity_mw), borderColor: crit, borderWidth: 1.5, borderDash: [2, 3], pointRadius: 0 });
+  const tdSup = H.some(h => h.supply != null);
+  if (tdSup || td.capacity_mw) {
+    ds.push({ label: 'Боломжит чадал', data: H.map(h => tdSup ? h.supply : td.capacity_mw), borderColor: crit, borderWidth: 1.5, borderDash: [2, 3], pointRadius: 0 });
     document.getElementById('tdLegend').insertAdjacentHTML('beforeend', `<span><i style="background:${crit}"></i>Боломжит чадал</span>`);
   }
   const o = baseOpts();
@@ -256,7 +257,12 @@ Chart.defaults.font.size = 12;
 
   const temps = fc.hours.map(h => h.temp).filter(t => t != null);
   const cap = fc.capacity_mw;
-  const risk = cap && fc.peak.p90 >= cap;
+  const SUP = fc.supply;   // цаг тутмын боломжит чадал (байвал)
+  const supAt = h => SUP ? (SUP.hours.find(x => x.hour === h) || {}).supply : cap;
+  const peakSup = supAt(fc.peak.hour);
+  const margin = SUP ? SUP.peak_margin : (cap ? cap - fc.peak.p90 : null);
+  const risk = margin != null && (margin < 0 || (SUP && SUP.risk_hours.length > 0));
+  const C = SUP ? SUP.components : null;
   document.getElementById('tiles').innerHTML = `
     <div class="tile ${risk ? 'alert' : ''}"><div class="k">Маргаашийн оргил ачаалал</div>
       <div class="v">${fmt(fc.peak.p50)} <small>МВт</small></div>
@@ -266,9 +272,10 @@ Chart.defaults.font.size = 12;
     <div class="tile"><div class="k">Хамгийн бага температур (УБ)</div>
       <div class="v">${fmt(Math.min(...temps), 1)} <small>°C</small></div>
       <div class="n">Дундаж ${fmt(temps.reduce((a, b) => a + b, 0) / temps.length, 1)} °C</div></div>
-    ${cap ? `<div class="tile ${risk ? 'alert' : ''}"><div class="k">Чадлын нөөц (P90-өөр)</div>
-      <div class="v">${fmt(cap - fc.peak.p90)} <small>МВт</small></div>
-      <div class="n">${risk ? '⚠ Хязгаарлалт хийх эрсдэлтэй' : '✓ Хүрэлцэхээр байна'} · чадал ${fmt(cap)} МВт</div></div>`
+    ${margin != null ? `<div class="tile ${risk ? 'alert' : ''}"><div class="k">Оргил цагийн нөөц (P90-өөр)</div>
+      <div class="v">${fmt(margin)} <small>МВт</small></div>
+      <div class="n">${risk ? '⚠ Хязгаарлалт хийх эрсдэлтэй' + (SUP && SUP.risk_hours.length ? ' (' + SUP.risk_hours.map(h => String(h).padStart(2, '0') + ':00').join(', ') + ')' : '') : '✓ Хүрэлцэхээр байна'} · боломжит ${fmt(peakSup)} МВт</div>
+      ${C ? `<div class="n">Дулааны ${fmt(C.thermal)} + ОХУ ${fmt(C.import_ru)} + Зэс-Оюу ${fmt(C.zes_oyu)} + батарей ${fmt(C.battery)} + ус ${fmt(C.hydro)} + салхи/нар (таамаг)</div>` : ''}</div>`
       : m ? `<div class="tile"><div class="k">Оргилын дундаж алдаа</div><div class="v">±${fmt(m.peak_mae_mw)} <small>МВт</small></div>
       <div class="n">Сүүлийн ${m.days} өдөр · ${fmt(m.peak_mape, 1)}%</div></div>` : ''}`;
 
@@ -281,8 +288,8 @@ Chart.defaults.font.size = 12;
       pointRadius: fc.hours.map(h => h.hour === fc.peak.hour ? 5 : 0), pointBackgroundColor: s1,
       pointBorderColor: css('--surface-1'), pointBorderWidth: 2, pointHoverRadius: 5 },
   ];
-  if (cap) {
-    ds.push({ label: 'Боломжит чадал', data: labels.map(() => cap), borderColor: crit, borderWidth: 1.5, borderDash: [6, 4], pointRadius: 0 });
+  if (SUP || cap) {
+    ds.push({ label: 'Боломжит чадал', data: fc.hours.map(h => supAt(h.hour)), borderColor: crit, borderWidth: 1.5, borderDash: [6, 4], pointRadius: 0, tension: .3 });
     document.getElementById('fcLegend').insertAdjacentHTML('beforeend', `<span><i style="background:${crit}"></i>Боломжит чадал</span>`);
   }
   new Chart(document.getElementById('fcChart'), { type: 'line', data: { labels, datasets: ds },
@@ -294,8 +301,10 @@ Chart.defaults.font.size = 12;
     options: baseOpts({ plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip,
       callbacks: { label: c => ` ${fmt(c.parsed.y, 1)} °C` } } } }) });
 
-  document.getElementById('fcTable').innerHTML = '<table><tr><th>Цаг</th><th>Темп. °C</th><th>P10</th><th>P50</th><th>P90 (МВт)</th></tr>' +
-    fc.hours.map(h => `<tr><td>${h.label}</td><td>${fmt(h.temp, 1)}</td><td>${fmt(h.p10)}</td><td>${fmt(h.p50)}</td><td>${fmt(h.p90)}</td></tr>`).join('') + '</table>';
+  const sh = h => SUP ? SUP.hours.find(x => x.hour === h) || {} : {};
+  document.getElementById('fcTable').innerHTML = '<table><tr><th>Цаг</th><th>Темп. °C</th><th>P10</th><th>P50</th><th>P90</th>' + (SUP ? '<th>Салхи</th><th>Нар</th><th>Боломжит</th><th>Нөөц (P90)</th>' : '') + '</tr>' +
+    fc.hours.map(h => `<tr><td>${h.label}</td><td>${fmt(h.temp, 1)}</td><td>${fmt(h.p10)}</td><td>${fmt(h.p50)}</td><td>${fmt(h.p90)}</td>` +
+      (SUP ? `<td>${fmt(sh(h.hour).wind_fc)}</td><td>${fmt(sh(h.hour).solar_fc)}</td><td>${fmt(sh(h.hour).supply)}</td><td>${fmt(sh(h.hour).supply - h.p90)}</td>` : '') + '</tr>').join('') + '</table>';
 
   // Сүүлийн 14 хоног
   if (recent?.length) {

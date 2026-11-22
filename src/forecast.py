@@ -12,10 +12,8 @@ import warnings
 import numpy as np
 import pandas as pd
 import sklearn
-try:  # scikit-learn < 1.0 (Python 3.6) дээр туршилтын модуль
+if tuple(int(x) for x in sklearn.__version__.split(".")[:2]) < (1, 0):   # Python 3.6 (Site5)
     from sklearn.experimental import enable_hist_gradient_boosting  # noqa: F401
-except ImportError:
-    pass
 from sklearn.ensemble import HistGradientBoostingRegressor
 
 _SK = tuple(int(x) for x in sklearn.__version__.split(".")[:2])
@@ -24,6 +22,7 @@ L1_LOSS = "absolute_error" if _SK >= (1, 0) else "least_absolute_deviation"
 from config import DATA, DOCS_DATA, CAPACITY_MW, ub_now, parse_date, norm_hours
 from features import FEATURES, build_frame
 from learning import hourly_correction, peak_correction, blend_band
+from supply import stress_flags, hourly_supply
 
 BACKTEST_DAYS = 60
 
@@ -109,6 +108,8 @@ def fit_with_intervals(train, test, feats, target, mode="plain", **kw):
     """P50 загвар + P10/P90 хүрээ. Хүрээг сүүлийн HOLDOUT_DAYS өдрийн загварт
     үзээгүй алдааны квантилаас (харьцангуй %) тооцно — квантил GBM-ээс бодитой."""
     train = train.dropna(subset=[target])
+    if "stressed" in train.columns:   # хязгаарлалт байж болзошгүй үеийг сургалтаас хасна
+        train = train[~train["stressed"].astype(bool)]
     d = _dates(train)
     cut = d.max() - pd.Timedelta(days=HOLDOUT_DAYS)
     a, b = train[d <= cut], train[d > cut]
@@ -151,6 +152,9 @@ def daily_frame(frame):
     d.loc[d["n"] < 24, "peak"] = np.nan
     d["peak_lag7"] = d["peak"].reindex(d.index - pd.Timedelta(days=7)).values
     d["temp_lag7_mean"] = d["temp_mean_day"].reindex(d.index - pd.Timedelta(days=7)).values
+    if "stressed" in frame.columns:
+        ev = frame[frame["hour"].between(17, 22)].groupby("date")["stressed"].any()
+        d["stressed"] = ev.reindex(d.index).fillna(False).astype(bool)
     return d
 
 
@@ -221,6 +225,12 @@ def main():
 
     tgt = pd.DataFrame({"date": target.isoformat(), "hour": range(1, 25), "total_mw": np.nan})
     frame = build_frame(pd.concat([load, tgt], ignore_index=True), weather)
+    # Хязгаарлалт байж болзошгүй цагууд (импорт хязгаартаа + дулааны станц дээд хэмжээндээ)
+    st = load.assign(stressed=stress_flags(load).values)
+    st_key = set(zip(pd.to_datetime(st.loc[st["stressed"], "date"]), st.loc[st["stressed"], "hour"]))
+    frame["stressed"] = [(d, h) in st_key for d, h in zip(frame["date"], frame["hour"])]
+    print("Хязгаарлалт байж болзошгүй: {} цаг, {} өдөр — сургалтаас хасав".format(
+        len(st_key), len({d for d, _ in st_key})))
 
     train = frame[(frame["date"].dt.date < target)].dropna(subset=["total_mw"])
     test = frame[frame["date"].dt.date == target].copy()
@@ -246,6 +256,21 @@ def main():
     pcorr, pband, p_n = peak_correction(old_plog, load, target)
     pk[["p10", "p50", "p90"]] = pk[["p10", "p50", "p90"]] * (1 + pcorr)
     pk["p10"], pk["p90"] = blend_band(pk["p50"], pk["p10"], pk["p90"], pband, p_n)
+    # --- Нийлүүлэлт: салхи/нарны таамаг ба цаг тутмын боломжит чадал ---
+    sup_rows, sup_comp = None, None
+    try:
+        ws_p, wsf_p = DATA / "weather_sites_hourly.csv", DATA / "weather_sites_forecast.csv"
+        wsites = None
+        if ws_p.exists():
+            wsites = pd.read_csv(ws_p)
+            if wsf_p.exists():
+                wsites = pd.concat([wsites, pd.read_csv(wsf_p)]).drop_duplicates(["time", "site"], keep="first")
+        sup_rows, sup_comp = hourly_supply(load, wsites, target)
+        sup_by_h = {r["hour"]: r for r in sup_rows}
+        test["supply"] = test["hour"].map(lambda h: sup_by_h[h]["supply"])
+    except Exception as e:  # noqa: BLE001
+        print("Нийлүүлэлтийн тооцоо амжилтгүй:", e)
+
     fc = {
         "issued_at": now.isoformat(timespec="minutes"),
         "target_date": target.isoformat(),
@@ -257,13 +282,20 @@ def main():
                    "temp": None if pd.isna(r.temp) else round(float(r.temp), 1)}
                   for r in test.itertuples()],
         "train_days": int(train["date"].nunique()),
+        "supply": None if sup_rows is None else {
+            "components": {k: round(v, 1) for k, v in sup_comp.items()},
+            "hours": sup_rows,
+            "peak_margin": round(sup_by_h[ph]["supply"] - float(pk["p90"]), 1),
+            "risk_hours": [r["hour"] for r in sup_rows if r["supply"] < float(test.loc[test["hour"] == r["hour"], "p90"].iloc[0])],
+        },
         "learning": {"peak_days": p_n, "peak_correction_pct": round(pcorr * 100, 2),
                      "hourly_days": h_n,
                      "hourly_correction_pct": {str(k): round(v * 100, 2) for k, v in sorted(hcorr.items())}},
     }
 
     # Таамгийн түүх — өчигдрийн таамгийг бодит гүйцэтгэлтэй харьцуулах
-    new_log = test[["hour", "p10", "p50", "p90", "raw_p50"]].assign(target_date=target.isoformat(),
+    log_cols = ["hour", "p10", "p50", "p90", "raw_p50"] + (["supply"] if "supply" in test.columns else [])
+    new_log = test[log_cols].assign(target_date=target.isoformat(),
                                                                     issued_at=fc["issued_at"]).round(1)
     log = pd.concat([old_log, new_log], sort=False) if old_log is not None else new_log
     log = log.drop_duplicates(["target_date", "hour"], keep="last").sort_values(["target_date", "hour"])
