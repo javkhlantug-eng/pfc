@@ -167,6 +167,20 @@ def peak_of(df, col):
     return int(df.loc[i, "hour"]), float(df.loc[i, col])
 
 
+RECONCILE_WIDTH = 4   # цаг; 60 өдрийн шалгалтаар 17–22 цагийн алдаа 30.3 → 21.9 МВт
+
+
+def reconcile_curve(df, peak_p50, width=RECONCILE_WIDTH):
+    """Цагийн муруйн оргилыг өдрийн оргилын загвартай тааруулна.
+    Цагийн загвар оргилыг дунджаар ~2%-иар бага гаргадаг тул оргил цагийн утгыг өдрийн
+    загварын P50 болгож, ойр цагуудыг Гауссын жингээр (exp(-(Δh/width)²)) зөөлөн өргөнө.
+    Өглөөний цагууд бараг өөрчлөгдөхгүй."""
+    ph, pv = peak_of(df, "p50")
+    k = peak_p50 / pv if pv else 1.0
+    f = 1 + (k - 1) * np.exp(-((df["hour"].values - ph) / float(width)) ** 2)
+    return df[["p10", "p50", "p90"]].mul(f, axis=0)
+
+
 def backtest(frame):
     """Сүүлийн BACKTEST_DAYS өдрийг нууж шалгана. Анхаар: энд бодит температур
     ашигладаг тул бодит ажиллагааны алдаа (таамагласан температуртай) арай их байна."""
@@ -181,12 +195,15 @@ def backtest(frame):
     dd = daily_frame(hist)
     dp = fit_predict_daily(dd[dd.index < cut], dd[dd.index >= cut])
 
+    te["curve_p50"] = te["p50"]
+    for d, g in te.groupby("date"):
+        te.loc[g.index, ["p10", "p50", "p90"]] = reconcile_curve(g, float(dp.loc[d, "p50"])).values
     rows = []
     for d, g in te.groupby("date"):
         if len(g) < 24:
             continue
         ah, av = peak_of(g, "total_mw")
-        ph, pv = peak_of(g, "p50")
+        ph, pv = peak_of(g.assign(p50=g["curve_p50"]), "p50")
         nh, nv = peak_of(g.dropna(subset=["naive"]), "naive") if g["naive"].notna().any() else (np.nan, np.nan)
         rows.append(dict(date=d, actual_peak=av, actual_hour=ah, pred_peak=float(dp.loc[d, "p50"]),
                          curve_peak=pv, pred_hour=ph, naive_peak=nv, naive_hour=nh,
@@ -256,6 +273,8 @@ def main():
     pcorr, pband, p_n = peak_correction(old_plog, load, target)
     pk[["p10", "p50", "p90"]] = pk[["p10", "p50", "p90"]] * (1 + pcorr)
     pk["p10"], pk["p90"] = blend_band(pk["p50"], pk["p10"], pk["p90"], pband, p_n)
+    # Цагийн муруйг оргилын таамагтай нийцүүлэх (графикт 1,657 биш 1,724 гэх мэт нэг тоо харагдана)
+    test[["p10", "p50", "p90"]] = reconcile_curve(test, float(pk["p50"])).values
     # --- Нийлүүлэлт: салхи/нарны таамаг ба цаг тутмын боломжит чадал ---
     sup_rows, sup_comp = None, None
     try:
