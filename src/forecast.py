@@ -274,6 +274,7 @@ def main():
     pk[["p10", "p50", "p90"]] = pk[["p10", "p50", "p90"]] * (1 + pcorr)
     pk["p10"], pk["p90"] = blend_band(pk["p50"], pk["p10"], pk["p90"], pband, p_n)
     # Цагийн муруйг оргилын таамагтай нийцүүлэх (графикт 1,657 биш 1,724 гэх мэт нэг тоо харагдана)
+    test["curve_p50"] = test["p50"]
     test[["p10", "p50", "p90"]] = reconcile_curve(test, float(pk["p50"])).values
     # --- Нийлүүлэлт: салхи/нарны таамаг ба цаг тутмын боломжит чадал ---
     sup_rows, sup_comp = None, None
@@ -313,7 +314,7 @@ def main():
     }
 
     # Таамгийн түүх — өчигдрийн таамгийг бодит гүйцэтгэлтэй харьцуулах
-    log_cols = ["hour", "p10", "p50", "p90", "raw_p50"] + (["supply"] if "supply" in test.columns else [])
+    log_cols = ["hour", "p10", "p50", "p90", "raw_p50", "curve_p50"] + (["supply"] if "supply" in test.columns else [])
     new_log = test[log_cols].assign(target_date=target.isoformat(),
                                                                     issued_at=fc["issued_at"]).round(1)
     log = pd.concat([old_log, new_log], sort=False) if old_log is not None else new_log
