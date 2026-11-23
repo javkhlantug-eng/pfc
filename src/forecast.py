@@ -21,7 +21,7 @@ L1_LOSS = "absolute_error" if _SK >= (1, 0) else "least_absolute_deviation"
 
 from config import DATA, DOCS_DATA, CAPACITY_MW, ub_now, parse_date, norm_hours
 from features import FEATURES, build_frame
-from learning import hourly_correction, peak_correction, blend_band
+from learning import hourly_correction, peak_correction, blend_band, evaluate
 from supply import stress_flags, hourly_supply
 
 BACKTEST_DAYS = 60
@@ -260,7 +260,10 @@ def main():
     old_log = pd.read_csv(log_p, dtype={"target_date": str}) if log_p.exists() else None
     old_plog = pd.read_csv(plog_p, dtype={"target_date": str}) if plog_p.exists() else None
     test["raw_p50"] = test["p50"]
+    ev = evaluate(old_log, old_plog, load, target)   # засвар сүүлийн 14 өдөрт тус болсон уу
     hcorr, h_n = hourly_correction(old_log, load, target)
+    if not ev["hourly_on"]:
+        hcorr = {}
     if hcorr:
         f = 1 + test["hour"].map(hcorr).fillna(0.0)
         test[["p10", "p50", "p90"]] = test[["p10", "p50", "p90"]].mul(f, axis=0)
@@ -271,6 +274,8 @@ def main():
     pk = fit_predict_daily(dd[dd.index < tdate], dd.loc[[tdate]]).iloc[0].copy()   # оргил МВт — өдрийн загвараас
     pk_raw = float(pk["p50"])
     pcorr, pband, p_n = peak_correction(old_plog, load, target)
+    if not ev["peak_on"]:
+        pcorr = 0.0
     pk[["p10", "p50", "p90"]] = pk[["p10", "p50", "p90"]] * (1 + pcorr)
     pk["p10"], pk["p90"] = blend_band(pk["p50"], pk["p10"], pk["p90"], pband, p_n)
     # Цагийн муруйг оргилын таамагтай нийцүүлэх (графикт 1,657 биш 1,724 гэх мэт нэг тоо харагдана)
@@ -308,7 +313,7 @@ def main():
             "peak_margin": round(sup_by_h[ph]["supply"] - float(pk["p90"]), 1),
             "risk_hours": [r["hour"] for r in sup_rows if r["supply"] < float(test.loc[test["hour"] == r["hour"], "p90"].iloc[0])],
         },
-        "learning": {"peak_days": p_n, "peak_correction_pct": round(pcorr * 100, 2),
+        "learning": {"eval": ev, "peak_days": p_n, "peak_correction_pct": round(pcorr * 100, 2),
                      "hourly_days": h_n,
                      "hourly_correction_pct": {str(k): round(v * 100, 2) for k, v in sorted(hcorr.items())}},
     }
@@ -356,6 +361,7 @@ def main():
             dump("metrics.json", m)
             print("Шалгалт:", m)
     print("Суралцах засвар: оргил {:+.2f}% ({} өдөр), цагийн {} өдөр".format(pcorr * 100, p_n, h_n))
+    print("Засварын үр дүн (14 өдөр):", ev)
     print(f"{target} оргил: {fc['peak']['label']} цагт ~{fc['peak']['p50']} МВт "
           f"(P10–P90: {fc['peak']['p10']}–{fc['peak']['p90']})")
 

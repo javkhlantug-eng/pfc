@@ -21,6 +21,7 @@ WINDOW_DAYS = 14   # сүүлийн хэдэн өдрийн алдааг хар�
 SHRINK_K = 7       # n өдрийн өгөгдөлтэй үед жин = n / (n + 7)
 MAX_CORR = 0.08    # засвар ±8%-иас хэтрэхгүй
 MIN_N_BAND = 7     # хүрээг бодит алдаанаас тооцох хамгийн бага өдөр
+MIN_N_GATE = 7     # засварыг унтраах эсэхийг шийдэх хамгийн бага өдөр
 
 
 def _actuals(load):
@@ -89,3 +90,38 @@ def blend_band(p50, p10, p90, band, n):
     lo = (1 - w) * (p10 / p50 - 1) + w * band[0]
     hi = (1 - w) * (p90 / p50 - 1) + w * band[1]
     return p50 * (1 + min(lo, 0)), p50 * (1 + max(hi, 0))
+
+
+def evaluate(log, peak_log, load, target):
+    """Сүүлийн 14 өдөрт засвар бодитоор тус болсон эсэх: анхны (засваргүй) ба засвартай
+    таамгийн алдааг зэрэгцүүлнэ. MIN_N_GATE-аас олон өдөрт засвартай нь муу бол
+    тухайн засварыг унтраана (hourly_on / peak_on = False)."""
+    out = {"hourly_days": 0, "hourly_on": True, "peak_days": 0, "peak_on": True}
+    act = _actuals(load)
+    if log is not None and not log.empty and "raw_p50" in log.columns:
+        lg = _window(log, target).copy()
+        lg = lg[lg["raw_p50"].notna()]
+        learned = lg["curve_p50"] if "curve_p50" in lg.columns else lg["p50"]
+        lg["learned"] = learned.where(learned.notna(), lg["p50"])
+        m = lg.merge(act, left_on=["target_date", "hour"], right_on=["date", "hour"])
+        if not m.empty:
+            curt = np.array([likely_curtailed(a, p) for a, p in zip(m["total_mw"], m["p10"])], dtype=bool)
+            m = m[~curt]
+            ape = lambda c: float((np.abs(m["total_mw"] - m[c]) / m["total_mw"]).mean() * 100)
+            n = int(m["target_date"].nunique())
+            out.update(hourly_days=n, hourly_mape_raw=round(ape("raw_p50"), 2), hourly_mape_learned=round(ape("learned"), 2))
+            out["hourly_on"] = not (n >= MIN_N_GATE and out["hourly_mape_learned"] > out["hourly_mape_raw"])
+    if peak_log is not None and not peak_log.empty:
+        pl = _window(peak_log, target)
+        cnt = act.groupby("date")["hour"].count()
+        daily = act.groupby("date")["total_mw"].max()[cnt >= 24]
+        m = pl.merge(daily.rename("actual").reset_index(), left_on="target_date", right_on="date")
+        if not m.empty:
+            curt = np.array([likely_curtailed(a, p) for a, p in zip(m["actual"], m["p10"])], dtype=bool)
+            m = m[~curt]
+            n = len(m)
+            if n:
+                out.update(peak_days=n, peak_mae_raw=round(float(np.abs(m["actual"] - m["raw_p50"]).mean()), 1),
+                           peak_mae_learned=round(float(np.abs(m["actual"] - m["p50"]).mean()), 1))
+                out["peak_on"] = not (n >= MIN_N_GATE and out["peak_mae_learned"] > out["peak_mae_raw"])
+    return out

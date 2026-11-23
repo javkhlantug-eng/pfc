@@ -159,7 +159,7 @@
     <div class="card">
       <h2>Загварын нарийвчлал</h2>
       <p id="mPeriod">Сүүлийн өдрүүдийг нууж шалгасан дүн</p>
-      <div id="metrics"></div>
+      <div id="metrics"></div><div id="learnEval"></div>
       <div class="foot">Шалгалтад бодит температур ашигладаг тул бодит ажиллагаанд (таамагласан температуртай) алдаа арай их байна.
       «Энгийн арга» = 7 хоногийн өмнөх яг тэр өдрийн ачаалал.</div>
     </div>
@@ -461,6 +461,18 @@ Chart.defaults.font.size = 12;
       <tr><td>Оргилын алдаа (MAPE)</td><td>${fmt(m.peak_mape, 1)}%</td><td>—</td></tr>
       <tr><td>Оргил цагийг ±1 цагийн дотор</td><td>${fmt(m.peak_hour_within_1h_pct)}%</td><td>—</td></tr>
       <tr><td>Бодит оргил 80% хүрээнд орсон</td><td>${fmt(m.peak_in_p10_p90_pct)}%</td><td>—</td></tr></table>`;
+  }
+  // Суралцах засварын бодит үр дүн: анхны загвар ба засвартай таамгийн алдаа (сүүлийн 14 өдөр)
+  const ev = fc && fc.learning && fc.learning.eval;
+  if (ev) {
+    const st = on => on ? 'идэвхтэй' : '<b style="color:var(--critical)">унтраасан</b>';
+    const row = (name, n, a, b, unit, on) => n ? `<tr><td>${name} <small>(${n} өдөр)</small></td><td>${fmt(a, unit === '%' ? 2 : 1)}${unit}</td><td>${fmt(b, unit === '%' ? 2 : 1)}${unit}</td><td>${st(on)}</td></tr>`
+                                             : `<tr><td>${name}</td><td colspan="3"><small>харьцуулах өдөр хараахан алга</small></td></tr>`;
+    document.getElementById('learnEval').innerHTML = `<h3 style="font-size:13px;margin:14px 0 6px;font-weight:600">Бодит алдаанаас суралцах засварын үр дүн (сүүлийн 14 өдөр)</h3><table>
+      <tr><th>Үзүүлэлт</th><th>Анхны загвар</th><th>Засвартай</th><th>Засвар</th></tr>
+      ${row('Цагийн ачааллын алдаа (MAPE)', ev.hourly_days, ev.hourly_mape_raw, ev.hourly_mape_learned, '%', ev.hourly_on)}
+      ${row('Оргилын дундаж алдаа', ev.peak_days, ev.peak_mae_raw, ev.peak_mae_learned, ' МВт', ev.peak_on)}</table>
+      <p style="margin-top:6px;font-size:12px;color:var(--text-secondary)">7-оос дээш өдрийн харьцуулалтаар засвартай таамаг анхныхаасаа муу гарвал тухайн засвар автоматаар унтарна.</p>`;
   }
 })();
 // Дэлгэц дээр нээлттэй орхисон үед 10 минут тутам шинэчлэгдэнэ
