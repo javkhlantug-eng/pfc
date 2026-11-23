@@ -105,7 +105,6 @@
       <span><i style="background:var(--series-2)"></i>Таамаг P50</span>
       <span><i class="band" style="background:var(--series-2-band)"></i>P10–P90</span>
       <span><i style="background:var(--series-3)"></i>Шинэчилсэн таамаг (бодит гүйцэтгэлээр)</span>
-      <span><i style="background:none;border:2px solid var(--series-2);border-radius:2px;transform:rotate(45deg);width:7px;height:7px"></i>Зарласан оргилын таамаг</span>
       <span><i style="background:var(--critical);width:8px;height:8px;border-radius:50%"></i>Хязгаарлалт байж болзошгүй (бодит &lt; P10 ба чадлын 92%-иас дээш)</span>
     </div>
     <div class="chart big"><canvas id="tdChart"></canvas></div>
@@ -241,8 +240,6 @@ function drawToday(td) {
     { label: 'P90', data: H.map(h => h.p90), borderWidth: 0, pointRadius: 0, fill: '+1', backgroundColor: css('--series-2-band') },
     { label: 'P10', data: H.map(h => h.p10), borderWidth: 0, pointRadius: 0, fill: false },
     { label: 'Таамаг P50', data: H.map(h => h.p50), borderColor: s2, borderWidth: 2, borderDash: [6, 4], pointRadius: 0, tension: .3 },
-    { label: 'Зарласан оргил', data: labels.map(l => l === S.fc_peak_label ? S.fc_peak : null), showLine: false,
-      pointStyle: 'rectRot', pointRadius: 7, pointHoverRadius: 8, pointBorderWidth: 2, borderColor: s2, backgroundColor: css('--surface-1') },
     { label: 'Шинэчилсэн таамаг', data: H.map(h => h.upd ?? null), borderColor: css('--series-3'), borderWidth: 2, borderDash: [2, 3], pointRadius: 0, tension: .3, spanGaps: false },
     { label: 'Бодит', data: H.map(h => h.actual), borderColor: s1, borderWidth: 2.5, tension: .3, spanGaps: false,
       pointRadius: H.map(h => h.curt ? 6 : (h.actual != null && h.label === S.last_label ? 5 : 0)),
