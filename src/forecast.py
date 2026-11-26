@@ -21,6 +21,7 @@ L1_LOSS = "absolute_error" if _SK >= (1, 0) else "least_absolute_deviation"
 
 from config import DATA, DOCS_DATA, CAPACITY_MW, ub_now, parse_date, norm_hours
 from features import FEATURES, build_frame
+from holiday_adj import major_factor
 from learning import hourly_correction, peak_correction, blend_band, evaluate
 from supply import stress_flags, hourly_supply
 
@@ -253,7 +254,15 @@ def main():
     test = frame[frame["date"].dt.date == target].copy()
     if test["temp"].isna().all():
         raise SystemExit(f"{target}-ний температурын таамаг алга. collect_weather.py-г ажиллуулна уу.")
-    test[["p10", "p50", "p90"]] = fit_predict(train, test)
+    hol = major_factor(load, target)                   # томоохон баяр бол тусгай засвар
+    if hol:
+        test_n = test.copy()
+        test_n["is_holiday"] = 0                       # ердийн өдөр гэж таамаглаад…
+        test[["p10", "p50", "p90"]] = fit_predict(train, test_n) * (1 + hol[1])   # …өмнөх жилүүдийн бууралтаар засна
+        print("Томоохон баяр: {} — цагийн {:+.1f}%, оргил {:+.1f}% ({} өмнөх тохиолдол)".format(
+            hol[3], hol[1] * 100, hol[0] * 100, hol[2]))
+    else:
+        test[["p10", "p50", "p90"]] = fit_predict(train, test)
 
     # --- Бодит таамгийн алдаанаас суралцах (зөвхөн энэ шинэ таамагт хэрэглэнэ) ---
     log_p, plog_p = DATA / "forecast_log.csv", DATA / "peak_log.csv"
@@ -271,7 +280,12 @@ def main():
     ph, _ = peak_of(test, "p50")                       # оргил цаг — цагийн муруйгаас
     dd = daily_frame(frame[frame["date"].dt.date <= target])
     tdate = pd.Timestamp(target)
-    pk = fit_predict_daily(dd[dd.index < tdate], dd.loc[[tdate]]).iloc[0].copy()   # оргил МВт — өдрийн загвараас
+    drow = dd.loc[[tdate]].copy()
+    if hol:
+        drow["is_holiday"] = 0
+    pk = fit_predict_daily(dd[dd.index < tdate], drow).iloc[0].copy()   # оргил МВт — өдрийн загвараас
+    if hol:
+        pk[["p10", "p50", "p90"]] = pk[["p10", "p50", "p90"]] * (1 + hol[0])
     pk_raw = float(pk["p50"])
     pcorr, pband, p_n = peak_correction(old_plog, load, target)
     if not ev["peak_on"]:
@@ -313,6 +327,8 @@ def main():
             "peak_margin": round(sup_by_h[ph]["supply"] - float(pk["p90"]), 1),
             "risk_hours": [r["hour"] for r in sup_rows if r["supply"] < float(test.loc[test["hour"] == r["hour"], "p90"].iloc[0])],
         },
+        "holiday": None if not hol else {"name": hol[3], "peak_pct": round(hol[0] * 100, 1),
+                                          "hourly_pct": round(hol[1] * 100, 1), "past": hol[2]},
         "learning": {"eval": ev, "peak_days": p_n, "peak_correction_pct": round(pcorr * 100, 2),
                      "hourly_days": h_n,
                      "hourly_correction_pct": {str(k): round(v * 100, 2) for k, v in sorted(hcorr.items())}},

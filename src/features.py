@@ -24,6 +24,22 @@ FEATURES = [
 ]
 
 
+FIXED_NAMES = {(1, 1): "Шинэ жил", (3, 8): "Эмэгтэйчүүдийн өдөр", (6, 1): "Хүүхдийн баяр",
+               (7, 11): "Наадам", (7, 12): "Наадам", (7, 13): "Наадам", (7, 14): "Наадам", (7, 15): "Наадам",
+               (11, 26): "Улс тунхагласан өдөр", (12, 29): "Тусгаар тогтнолын өдөр"}
+# Ачаалал эрс буурдаг томоохон баярууд — загвар цөөн жишээнээс сурч чаддаггүй тул тусад нь засна
+MAJOR = {"Шинэ жил", "Цагаан сар", "Наадам"}
+
+
+def holiday_name(day, table=None):
+    """Тухайн өдрийн баярын нэр, эсвэл None."""
+    t = pd.Timestamp(day)
+    if table is None:
+        p = DATA / "holidays.csv"
+        table = dict(pd.read_csv(p)[["date", "name"]].values) if p.exists() else {}
+    return table.get(t.strftime("%Y-%m-%d")) or FIXED_NAMES.get((t.month, t.day))
+
+
 def load_holidays() -> set:
     p = DATA / "holidays.csv"
     extra = set(pd.read_csv(p)["date"]) if p.exists() else set()
